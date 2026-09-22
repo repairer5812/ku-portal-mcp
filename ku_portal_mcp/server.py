@@ -12,6 +12,10 @@ Provides tools for accessing Korea University portal (KUPID):
 """
 
 import asyncio
+import base64
+import hashlib
+import mimetypes
+import os
 import re
 import sys
 import logging
@@ -23,6 +27,12 @@ from typing import Any
 import httpx
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
+from mcp.types import (
+    BlobResourceContents,
+    CallToolResult,
+    EmbeddedResource,
+    TextContent,
+)
 
 from . import ams
 from .academic import resolve_year_semester
@@ -1672,7 +1682,7 @@ async def kupid_lms_download_file(
     file_id: int,
     save_dir: str,
     filename: str = "",
-) -> dict[str, Any]:
+) -> CallToolResult:
     """Canvas LMS 파일을 지정한 디렉토리에 다운로드합니다.
 
     file_id는 kupid_lms_modules 결과의 items에서 type이 'File'인 항목의
@@ -1687,18 +1697,27 @@ async def kupid_lms_download_file(
         # Expand ~ and validate absolute path
         raw_path = save_dir.strip()
         if not raw_path:
-            return {"success": False, "message": "save_dir가 비어 있습니다."}
+            message = "save_dir가 비어 있습니다."
+            return CallToolResult(
+                isError=True,
+                content=[TextContent(type="text", text=message)],
+                structuredContent={"success": False, "message": message},
+            )
         target_dir = Path(raw_path).expanduser()
         if not target_dir.is_absolute():
-            return {
-                "success": False,
-                "message": f"save_dir는 절대경로여야 합니다: {save_dir}",
-            }
+            message = f"save_dir는 절대경로여야 합니다: {save_dir}"
+            return CallToolResult(
+                isError=True,
+                content=[TextContent(type="text", text=message)],
+                structuredContent={"success": False, "message": message},
+            )
         if ".." in target_dir.parts:
-            return {
-                "success": False,
-                "message": "save_dir에 '..'를 포함할 수 없습니다.",
-            }
+            message = "save_dir에 '..'를 포함할 수 없습니다."
+            return CallToolResult(
+                isError=True,
+                content=[TextContent(type="text", text=message)],
+                structuredContent={"success": False, "message": message},
+            )
 
         fname = filename.strip() or None
 
@@ -1706,14 +1725,70 @@ async def kupid_lms_download_file(
             return await download_lms_file(session, fid, d, fn)
 
         result = await _lms_with_retry(_fetch)
-        return {
+        downloaded_path = Path(result["path"])
+        size = downloaded_path.stat().st_size
+        max_embedded_bytes = int(
+            os.environ.get("KU_MCP_MAX_EMBEDDED_FILE_BYTES", str(20 * 1024 * 1024))
+        )
+        metadata = {
             "success": True,
             "file_id": file_id,
             **result,
         }
+        if size > max_embedded_bytes:
+            metadata["success"] = False
+            metadata["message"] = (
+                f"파일 크기 {size} bytes가 MCP 임베드 제한 "
+                f"{max_embedded_bytes} bytes를 초과합니다."
+            )
+            return CallToolResult(
+                isError=True,
+                content=[TextContent(type="text", text=metadata["message"])],
+                structuredContent=metadata,
+            )
+
+        file_bytes = downloaded_path.read_bytes()
+        mime_type = (
+            result.get("content_type")
+            or mimetypes.guess_type(downloaded_path.name)[0]
+            or "application/octet-stream"
+        )
+        metadata.update(
+            {
+                "size": size,
+                "content_type": mime_type,
+                "sha256": hashlib.sha256(file_bytes).hexdigest(),
+                "delivery": "mcp_embedded_resource",
+            }
+        )
+        return CallToolResult(
+            content=[
+                TextContent(
+                    type="text",
+                    text=(
+                        f"다운로드 완료: {downloaded_path.name} "
+                        f"({size} bytes, {mime_type})"
+                    ),
+                ),
+                EmbeddedResource(
+                    type="resource",
+                    resource=BlobResourceContents(
+                        uri=downloaded_path.as_uri(),
+                        mimeType=mime_type,
+                        blob=base64.b64encode(file_bytes).decode("ascii"),
+                    ),
+                ),
+            ],
+            structuredContent=metadata,
+        )
     except Exception as e:
         logger.error(f"Failed to download LMS file {file_id}: {e}")
-        return {"success": False, "message": f"LMS 파일 다운로드 실패: {e}"}
+        message = f"LMS 파일 다운로드 실패: {e}"
+        return CallToolResult(
+            isError=True,
+            content=[TextContent(type="text", text=message)],
+            structuredContent={"success": False, "message": message},
+        )
 
 
 @server.tool()

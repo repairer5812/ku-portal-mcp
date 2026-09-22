@@ -1,4 +1,6 @@
 import asyncio
+import base64
+import hashlib
 import json
 
 import ku_portal_mcp.server as server_module
@@ -263,6 +265,44 @@ def test_kupid_lms_courses_returns_mcp_serialized_output(monkeypatch):
             }
         ],
     }
+
+
+def test_kupid_lms_download_file_returns_embedded_resource(monkeypatch, tmp_path):
+    payload = b"fake pdf payload"
+
+    async def fake_get_lms_session():
+        return object()
+
+    async def fake_download_lms_file(session, file_id, save_dir, filename):
+        assert file_id == 123
+        target = save_dir / (filename or "lecture.pdf")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(payload)
+        return {
+            "path": str(target),
+            "filename": target.name,
+            "size": len(payload),
+            "content_type": "application/pdf",
+        }
+
+    monkeypatch.setattr(server_module, "_get_lms_session", fake_get_lms_session)
+    monkeypatch.setattr(server_module, "download_lms_file", fake_download_lms_file)
+
+    result = _call_tool(
+        "kupid_lms_download_file",
+        {"file_id": 123, "save_dir": str(tmp_path), "filename": "lecture.pdf"},
+    )
+
+    blocks = result.content
+    structured = result.structuredContent
+    assert len(blocks) == 2
+    assert blocks[0].type == "text"
+    assert blocks[1].type == "resource"
+    assert blocks[1].resource.mimeType == "application/pdf"
+    assert base64.b64decode(blocks[1].resource.blob) == payload
+    assert structured["success"] is True
+    assert structured["delivery"] == "mcp_embedded_resource"
+    assert structured["sha256"] == hashlib.sha256(payload).hexdigest()
 
 
 def test_kupid_get_all_grades_returns_mcp_serialized_output(monkeypatch):
