@@ -17,8 +17,10 @@ import hashlib
 import mimetypes
 import os
 import re
+import shutil
 import sys
 import logging
+import tempfile
 from dataclasses import asdict
 from datetime import date
 from pathlib import Path
@@ -96,6 +98,36 @@ logging.basicConfig(
     handlers=[logging.FileHandler(log_dir / "server.log")],
 )
 logger = logging.getLogger(__name__)
+
+_DEFAULT_MAX_EMBEDDED_FILE_BYTES = 20 * 1024 * 1024
+_ABSOLUTE_MAX_EMBEDDED_FILE_BYTES = 100 * 1024 * 1024
+
+
+def _max_embedded_file_bytes() -> int:
+    """Read the embed limit, falling back safely for invalid configuration."""
+    raw_value = os.environ.get(
+        "KU_MCP_MAX_EMBEDDED_FILE_BYTES",
+        str(_DEFAULT_MAX_EMBEDDED_FILE_BYTES),
+    )
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError):
+        value = 0
+    if value <= 0:
+        logger.warning(
+            "Invalid KU_MCP_MAX_EMBEDDED_FILE_BYTES=%r; using default %d",
+            raw_value,
+            _DEFAULT_MAX_EMBEDDED_FILE_BYTES,
+        )
+        return _DEFAULT_MAX_EMBEDDED_FILE_BYTES
+    if value > _ABSOLUTE_MAX_EMBEDDED_FILE_BYTES:
+        logger.warning(
+            "KU_MCP_MAX_EMBEDDED_FILE_BYTES=%d exceeds hard cap %d; clamping",
+            value,
+            _ABSOLUTE_MAX_EMBEDDED_FILE_BYTES,
+        )
+        return _ABSOLUTE_MAX_EMBEDDED_FILE_BYTES
+    return value
 
 server = FastMCP(
     "KU Portal",
@@ -1693,31 +1725,38 @@ async def kupid_lms_download_file(
         save_dir: 저장할 디렉토리 절대경로 (예: /Users/me/Documents/lecture)
         filename: 저장 파일명 (생략 시 Canvas 원본 파일명 사용)
     """
+    remote_mode = bool(os.environ.get("MCP_PUBLIC_BASE_URL"))
+    remote_temp_dir: Path | None = None
     try:
-        # Expand ~ and validate absolute path
-        raw_path = save_dir.strip()
-        if not raw_path:
-            message = "save_dir가 비어 있습니다."
-            return CallToolResult(
-                isError=True,
-                content=[TextContent(type="text", text=message)],
-                structuredContent={"success": False, "message": message},
-            )
-        target_dir = Path(raw_path).expanduser()
-        if not target_dir.is_absolute():
-            message = f"save_dir는 절대경로여야 합니다: {save_dir}"
-            return CallToolResult(
-                isError=True,
-                content=[TextContent(type="text", text=message)],
-                structuredContent={"success": False, "message": message},
-            )
-        if ".." in target_dir.parts:
-            message = "save_dir에 '..'를 포함할 수 없습니다."
-            return CallToolResult(
-                isError=True,
-                content=[TextContent(type="text", text=message)],
-                structuredContent={"success": False, "message": message},
-            )
+        if remote_mode:
+            # A remote caller cannot access or safely choose a server filesystem path.
+            remote_temp_dir = Path(tempfile.mkdtemp(prefix="ku-mcp-download-"))
+            target_dir = remote_temp_dir
+        else:
+            # Expand ~ and validate absolute path for local stdio callers.
+            raw_path = save_dir.strip()
+            if not raw_path:
+                message = "save_dir가 비어 있습니다."
+                return CallToolResult(
+                    isError=True,
+                    content=[TextContent(type="text", text=message)],
+                    structuredContent={"success": False, "message": message},
+                )
+            target_dir = Path(raw_path).expanduser()
+            if not target_dir.is_absolute():
+                message = f"save_dir는 절대경로여야 합니다: {save_dir}"
+                return CallToolResult(
+                    isError=True,
+                    content=[TextContent(type="text", text=message)],
+                    structuredContent={"success": False, "message": message},
+                )
+            if ".." in target_dir.parts:
+                message = "save_dir에 '..'를 포함할 수 없습니다."
+                return CallToolResult(
+                    isError=True,
+                    content=[TextContent(type="text", text=message)],
+                    structuredContent={"success": False, "message": message},
+                )
 
         fname = filename.strip() or None
 
@@ -1727,22 +1766,42 @@ async def kupid_lms_download_file(
         result = await _lms_with_retry(_fetch)
         downloaded_path = Path(result["path"])
         size = downloaded_path.stat().st_size
-        max_embedded_bytes = int(
-            os.environ.get("KU_MCP_MAX_EMBEDDED_FILE_BYTES", str(20 * 1024 * 1024))
-        )
+        max_embedded_bytes = _max_embedded_file_bytes()
         metadata = {
             "success": True,
             "file_id": file_id,
             **result,
         }
+        if remote_mode:
+            metadata["path"] = None
         if size > max_embedded_bytes:
-            metadata["success"] = False
+            if remote_mode:
+                metadata.update(
+                    {
+                        "success": False,
+                        "path": None,
+                        "delivery": "not_delivered",
+                        "embedded": False,
+                        "message": (
+                            f"파일 크기 {size} bytes가 원격 MCP 임베드 제한 "
+                            f"{max_embedded_bytes} bytes를 초과해 전달할 수 없습니다."
+                            " 서버 임시 파일은 요청 종료 시 삭제됩니다."
+                        ),
+                    }
+                )
+                return CallToolResult(
+                    isError=True,
+                    content=[TextContent(type="text", text=metadata["message"])],
+                    structuredContent=metadata,
+                )
+            metadata["delivery"] = "filesystem"
+            metadata["embedded"] = False
             metadata["message"] = (
-                f"파일 크기 {size} bytes가 MCP 임베드 제한 "
-                f"{max_embedded_bytes} bytes를 초과합니다."
+                f"다운로드 완료: {downloaded_path.name} ({size} bytes). "
+                f"MCP 임베드 제한 {max_embedded_bytes} bytes를 초과하여 "
+                "파일 본문은 임베드하지 않았습니다."
             )
             return CallToolResult(
-                isError=True,
                 content=[TextContent(type="text", text=metadata["message"])],
                 structuredContent=metadata,
             )
@@ -1753,13 +1812,20 @@ async def kupid_lms_download_file(
             or mimetypes.guess_type(downloaded_path.name)[0]
             or "application/octet-stream"
         )
+        file_sha256 = hashlib.sha256(file_bytes).hexdigest()
         metadata.update(
             {
                 "size": size,
                 "content_type": mime_type,
-                "sha256": hashlib.sha256(file_bytes).hexdigest(),
+                "sha256": file_sha256,
                 "delivery": "mcp_embedded_resource",
+                "embedded": True,
             }
+        )
+        resource_uri = (
+            f"urn:ku-portal-mcp:lms-file:{file_id}:{file_sha256[:16]}"
+            if remote_mode
+            else downloaded_path.as_uri()
         )
         return CallToolResult(
             content=[
@@ -1773,7 +1839,7 @@ async def kupid_lms_download_file(
                 EmbeddedResource(
                     type="resource",
                     resource=BlobResourceContents(
-                        uri=downloaded_path.as_uri(),
+                        uri=resource_uri,
                         mimeType=mime_type,
                         blob=base64.b64encode(file_bytes).decode("ascii"),
                     ),
@@ -1789,6 +1855,14 @@ async def kupid_lms_download_file(
             content=[TextContent(type="text", text=message)],
             structuredContent={"success": False, "message": message},
         )
+    finally:
+        if remote_temp_dir is not None:
+            shutil.rmtree(remote_temp_dir, ignore_errors=True)
+            if remote_temp_dir.exists():
+                logger.error(
+                    "Failed to remove remote LMS temporary directory: %s",
+                    remote_temp_dir,
+                )
 
 
 @server.tool()

@@ -302,7 +302,143 @@ def test_kupid_lms_download_file_returns_embedded_resource(monkeypatch, tmp_path
     assert base64.b64decode(blocks[1].resource.blob) == payload
     assert structured["success"] is True
     assert structured["delivery"] == "mcp_embedded_resource"
+    assert structured["embedded"] is True
     assert structured["sha256"] == hashlib.sha256(payload).hexdigest()
+
+
+def test_kupid_lms_download_file_keeps_large_file_without_embedding(
+    monkeypatch, tmp_path
+):
+    payload = b"large payload"
+
+    async def fake_get_lms_session():
+        return object()
+
+    async def fake_download_lms_file(session, file_id, save_dir, filename):
+        target = save_dir / (filename or "lecture.zip")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(payload)
+        return {
+            "path": str(target),
+            "filename": target.name,
+            "size": len(payload),
+            "content_type": "application/zip",
+        }
+
+    monkeypatch.setattr(server_module, "_get_lms_session", fake_get_lms_session)
+    monkeypatch.setattr(server_module, "download_lms_file", fake_download_lms_file)
+    monkeypatch.setenv("KU_MCP_MAX_EMBEDDED_FILE_BYTES", "4")
+
+    result = _call_tool(
+        "kupid_lms_download_file",
+        {"file_id": 123, "save_dir": str(tmp_path), "filename": "lecture.zip"},
+    )
+
+    assert result.isError is False
+    assert len(result.content) == 1
+    assert result.content[0].type == "text"
+    assert result.structuredContent["success"] is True
+    assert result.structuredContent["delivery"] == "filesystem"
+    assert result.structuredContent["embedded"] is False
+    assert (tmp_path / "lecture.zip").read_bytes() == payload
+
+
+def test_remote_lms_download_rejects_undeliverable_large_file(
+    monkeypatch, tmp_path
+):
+    payload = b"large payload"
+    observed_dirs = []
+
+    async def fake_get_lms_session():
+        return object()
+
+    async def fake_download_lms_file(session, file_id, save_dir, filename):
+        observed_dirs.append(save_dir)
+        target = save_dir / (filename or "lecture.zip")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(payload)
+        return {
+            "path": str(target),
+            "filename": target.name,
+            "size": len(payload),
+            "content_type": "application/zip",
+        }
+
+    monkeypatch.setattr(server_module, "_get_lms_session", fake_get_lms_session)
+    monkeypatch.setattr(server_module, "download_lms_file", fake_download_lms_file)
+    monkeypatch.setenv("KU_MCP_MAX_EMBEDDED_FILE_BYTES", "4")
+    monkeypatch.setenv("MCP_PUBLIC_BASE_URL", "https://example.test/ku-mcp")
+
+    result = _call_tool(
+        "kupid_lms_download_file",
+        {"file_id": 123, "save_dir": str(tmp_path), "filename": "lecture.zip"},
+    )
+
+    assert result.isError is True
+    assert result.structuredContent["success"] is False
+    assert result.structuredContent["delivery"] == "not_delivered"
+    assert result.structuredContent["path"] is None
+    assert not (tmp_path / "lecture.zip").exists()
+    assert len(observed_dirs) == 1
+    assert observed_dirs[0] != tmp_path
+    assert not observed_dirs[0].exists()
+
+
+def test_remote_lms_download_embeds_without_exposing_or_leaving_server_path(
+    monkeypatch, tmp_path
+):
+    payload = b"small remote payload"
+    observed_dirs = []
+
+    async def fake_get_lms_session():
+        return object()
+
+    async def fake_download_lms_file(session, file_id, save_dir, filename):
+        observed_dirs.append(save_dir)
+        target = save_dir / (filename or "lecture.pdf")
+        target.write_bytes(payload)
+        return {
+            "path": str(target),
+            "filename": target.name,
+            "size": len(payload),
+            "content_type": "application/pdf",
+        }
+
+    monkeypatch.setattr(server_module, "_get_lms_session", fake_get_lms_session)
+    monkeypatch.setattr(server_module, "download_lms_file", fake_download_lms_file)
+    monkeypatch.setenv("MCP_PUBLIC_BASE_URL", "https://example.test/ku-mcp")
+
+    result = _call_tool(
+        "kupid_lms_download_file",
+        {"file_id": 123, "save_dir": str(tmp_path), "filename": "lecture.pdf"},
+    )
+
+    assert result.isError is False
+    assert result.structuredContent["success"] is True
+    assert result.structuredContent["path"] is None
+    assert result.structuredContent["delivery"] == "mcp_embedded_resource"
+    assert result.content[1].resource.uri.scheme == "urn"
+    assert base64.b64decode(result.content[1].resource.blob) == payload
+    assert len(observed_dirs) == 1
+    assert observed_dirs[0] != tmp_path
+    assert not observed_dirs[0].exists()
+
+
+def test_invalid_embed_limit_uses_safe_default(monkeypatch):
+    for invalid_value in ("", "not-a-number", "0", "-1"):
+        monkeypatch.setenv("KU_MCP_MAX_EMBEDDED_FILE_BYTES", invalid_value)
+        assert (
+            server_module._max_embedded_file_bytes()
+            == server_module._DEFAULT_MAX_EMBEDDED_FILE_BYTES
+        )
+
+
+def test_embed_limit_is_clamped_to_absolute_cap(monkeypatch):
+    monkeypatch.setenv("KU_MCP_MAX_EMBEDDED_FILE_BYTES", str(1024**4))
+    assert (
+        server_module._max_embedded_file_bytes()
+        == server_module._ABSOLUTE_MAX_EMBEDDED_FILE_BYTES
+    )
 
 
 def test_kupid_get_all_grades_returns_mcp_serialized_output(monkeypatch):

@@ -18,6 +18,8 @@ import time
 import logging
 import base64
 import html as html_lib
+import os
+import tempfile
 from urllib.parse import unquote
 from dataclasses import dataclass, asdict
 from pathlib import Path
@@ -585,7 +587,94 @@ def _sanitize_filename(name: str) -> str:
     name = name.replace("\x00", "").replace("/", "_").replace("\\", "_")
     # Strip leading dots to prevent hidden file / traversal
     name = name.lstrip(".")
-    return name or "unnamed"
+    name = name or "unnamed"
+    if len(name.encode("utf-8")) <= 220:
+        return name
+    suffix = Path(name).suffix
+    if len(suffix.encode("utf-8")) > 32:
+        suffix = ""
+    stem = name[: -len(suffix)] if suffix else name
+    byte_budget = 220 - len(suffix.encode("utf-8"))
+    while stem and len(stem.encode("utf-8")) > byte_budget:
+        stem = stem[:-1]
+    return (stem or "unnamed") + suffix
+
+
+def _base_content_type(value: str | None) -> str:
+    """Return a normalized MIME type without parameters."""
+    return (value or "").split(";", 1)[0].strip().lower()
+
+
+def _looks_like_html(data: bytes | bytearray) -> bool:
+    """Detect common HTML login/error signatures in an initial body sample."""
+    prefix = bytes(data).lstrip()
+    if prefix.startswith(b"\xef\xbb\xbf"):
+        prefix = prefix[3:].lstrip()
+    prefix = prefix.lower()
+    if prefix.startswith(b"<?xml"):
+        declaration_end = prefix.find(b"?>")
+        if declaration_end < 0:
+            return False
+        prefix = prefix[declaration_end + 2 :].lstrip()
+    return prefix.startswith(
+        (
+            b"<!doctype",
+            b"<!--",
+            b"<html",
+            b"<head",
+            b"<body",
+            b"<meta",
+            b"<title",
+            b"<script",
+        )
+    )
+
+
+def _extend_content_probe(
+    probe: bytearray, chunk: bytes, max_bytes: int = 8192
+) -> None:
+    """Collect a bounded significant prefix while ignoring unlimited whitespace."""
+    if len(probe) >= max_bytes:
+        return
+    candidate = chunk
+    if not probe:
+        candidate = candidate.lstrip()
+    remaining = max_bytes - len(probe)
+    probe.extend(candidate[:remaining])
+
+
+def _publish_download(partial: Path, save_dir: Path, desired_name: str) -> Path:
+    """Atomically publish a complete file without overwriting a concurrent download."""
+    desired = save_dir / desired_name
+    stem, suffix = desired.stem, desired.suffix
+    index = 0
+    while True:
+        candidate = desired if index == 0 else save_dir / f"{stem}_{index}{suffix}"
+        try:
+            os.link(partial, candidate)
+        except FileExistsError:
+            index += 1
+            continue
+        except OSError:
+            try:
+                fd = os.open(
+                    candidate,
+                    os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                    0o600,
+                )
+            except FileExistsError:
+                index += 1
+                continue
+            os.close(fd)
+            try:
+                os.replace(partial, candidate)
+            except BaseException:
+                candidate.unlink(missing_ok=True)
+                raise
+            return candidate
+        else:
+            partial.unlink()
+            return candidate
 
 
 async def download_lms_file(
@@ -611,36 +700,94 @@ async def download_lms_file(
     )
     save_dir.mkdir(parents=True, exist_ok=True)
 
-    # Avoid overwriting existing files
-    target = save_dir / actual_name
-    if target.exists():
-        stem, suffix = target.stem, target.suffix
-        i = 1
-        while (save_dir / f"{stem}_{i}{suffix}").exists():
-            i += 1
-        target = save_dir / f"{stem}_{i}{suffix}"
-
     # Canvas /files/:id/download redirects to a pre-signed S3 URL; both legs
     # may need the session cookie (Canvas gates the redirect).
     cookie_str = "; ".join(f"{k}={v}" for k, v in session.cookies.items())
     total = 0
+    source_name = _sanitize_filename(info.get("display_name") or f"file_{file_id}")
+    declared_content_type = info.get("content-type") or info.get("content_type") or ""
+    declared_mime_type = _base_content_type(declared_content_type)
+    source_expects_pdf = source_name.lower().endswith(".pdf")
+    declared_expects_pdf = declared_mime_type == "application/pdf"
+    expects_html = (
+        Path(source_name).suffix.lower() in {".html", ".htm"}
+        or declared_mime_type in {"text/html", "application/xhtml+xml"}
+    )
+    response_content_type = ""
+    fd, partial_name = tempfile.mkstemp(
+        dir=save_dir,
+        prefix=f".ku_{file_id}.",
+        suffix=".part",
+    )
+    os.close(fd)
+    partial = Path(partial_name)
     async with httpx.AsyncClient(
         timeout=300.0,
         headers={"user-agent": _UA, "cookie": cookie_str},
         follow_redirects=True,
     ) as client:
-        async with client.stream("GET", download_url) as resp:
-            resp.raise_for_status()
-            with target.open("wb") as f:
-                async for chunk in resp.aiter_bytes(chunk_size=65536):
-                    f.write(chunk)
-                    total += len(chunk)
+        try:
+            async with client.stream("GET", download_url) as resp:
+                resp.raise_for_status()
+                response_content_type = resp.headers.get("content-type", "")
+                response_mime_type = _base_content_type(response_content_type)
+                expects_pdf = (
+                    source_expects_pdf
+                    or declared_expects_pdf
+                    or response_mime_type == "application/pdf"
+                )
+                if not expects_html and response_mime_type in {
+                    "text/html",
+                    "application/xhtml+xml",
+                }:
+                    raise RuntimeError(
+                        "파일 다운로드 실패: 로그인 또는 오류 HTML 응답을 받았습니다 "
+                        f"(content-type={response_content_type or 'unknown'})"
+                    )
+                first_bytes = bytearray()
+                with partial.open("wb") as f:
+                    async for chunk in resp.aiter_bytes(chunk_size=65536):
+                        if not chunk:
+                            continue
+                        _extend_content_probe(first_bytes, chunk)
+                        if not expects_html and _looks_like_html(first_bytes):
+                            raise RuntimeError(
+                                "파일 다운로드 실패: 로그인 또는 오류 HTML 본문을 받았습니다 "
+                                f"(content-type={response_content_type or 'unknown'})"
+                            )
+                        if expects_pdf:
+                            stripped = bytes(first_bytes).lstrip()
+                            if len(stripped) >= 5 and not stripped.startswith(b"%PDF-"):
+                                raise RuntimeError(
+                                    "PDF 다운로드 실패: 실제 응답이 PDF가 아닙니다 "
+                                    f"(content-type={response_content_type or 'unknown'})"
+                                )
+                        f.write(chunk)
+                        total += len(chunk)
+
+                if expects_pdf and not bytes(first_bytes).lstrip().startswith(b"%PDF-"):
+                    raise RuntimeError(
+                        "PDF 다운로드 실패: PDF 헤더(%PDF-)가 없습니다 "
+                        f"(content-type={response_content_type or 'unknown'})"
+                    )
+                if expects_pdf:
+                    response_content_type = "application/pdf"
+        except BaseException:
+            # 인증 만료 HTML이나 끊긴 다운로드를 정상 파일처럼 남기지 않는다.
+            partial.unlink(missing_ok=True)
+            raise
+
+    try:
+        target = _publish_download(partial, save_dir, actual_name)
+    except BaseException:
+        partial.unlink(missing_ok=True)
+        raise
 
     return {
         "path": str(target),
         "filename": target.name,
         "size": total,
-        "content_type": info.get("content-type") or info.get("content_type"),
+        "content_type": response_content_type or declared_content_type or None,
     }
 
 

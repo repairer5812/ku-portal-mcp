@@ -1,0 +1,55 @@
+services:
+  ku-portal-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile.remote
+    container_name: ku-portal-mcp
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      MCP_HOST: "0.0.0.0"
+      MCP_PORT: "8000"
+      MCP_PUBLIC_BASE_URL: "https://kcai-b650m-d3hp.tail7ec92f.ts.net/ku-mcp"
+      MCP_OWNER_IPS: "1.225.70.114,100.71.44.60,100.124.100.20,fd7a:115c:a1e0::673b:2c3c,fd7a:115c:a1e0::d03b:6414"
+      MCP_TRUSTED_PROXY_IPS: "172.20.0.1/32"
+      MCP_CLIENT_IP_HEADER: "x-forwarded-for"
+      MCP_REGISTRATION_OPEN_UNTIL: "0"
+    volumes:
+      - /home/kcai/.cache/ku-portal-mcp:/home/app/.cache/ku-portal-mcp
+    secrets:
+      - ku_portal_id
+      - ku_portal_pw
+      - mcp_owner_approval_secret
+      - mcp_oauth_fernet_key
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cpus: 1.0
+    mem_limit: 768m
+    pids_limit: 128
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+secrets:
+  ku_portal_id:
+    file: /home/kcai/.config/ku-portal-mcp/ku_portal_id
+  ku_portal_pw:
+    file: /home/kcai/.config/ku-portal-mcp/ku_portal_pw
+  mcp_owner_approval_secret:
+    file: /home/kcai/.config/ku-portal-mcp/mcp_owner_approval_secret
+  mcp_oauth_fernet_key:
+    file: /home/kcai/.config/ku-portal-mcp/mcp_oauth_fernet_key
