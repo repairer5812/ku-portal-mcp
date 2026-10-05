@@ -17,6 +17,7 @@ import json
 import time
 import logging
 import base64
+import hashlib
 import html as html_lib
 from urllib.parse import unquote
 from dataclasses import dataclass, asdict
@@ -624,6 +625,7 @@ async def download_lms_file(
     # may need the session cookie (Canvas gates the redirect).
     cookie_str = "; ".join(f"{k}={v}" for k, v in session.cookies.items())
     total = 0
+    digest = hashlib.sha256()
     async with httpx.AsyncClient(
         timeout=300.0,
         headers={"user-agent": _UA, "cookie": cookie_str},
@@ -634,6 +636,7 @@ async def download_lms_file(
             with target.open("wb") as f:
                 async for chunk in resp.aiter_bytes(chunk_size=65536):
                     f.write(chunk)
+                    digest.update(chunk)
                     total += len(chunk)
 
     return {
@@ -641,6 +644,7 @@ async def download_lms_file(
         "filename": target.name,
         "size": total,
         "content_type": info.get("content-type") or info.get("content_type"),
+        "sha256": digest.hexdigest(),
     }
 
 
