@@ -1697,7 +1697,7 @@ async def kupid_lms_download_file(
             return CallToolResult(
                 content=[TextContent(type="text", text=error["message"])],
                 structured_content=error,
-                isError=True,
+                is_error=True,
             )
         target_dir = Path(raw_path).expanduser()
         if not target_dir.is_absolute():
@@ -1708,7 +1708,7 @@ async def kupid_lms_download_file(
             return CallToolResult(
                 content=[TextContent(type="text", text=error["message"])],
                 structured_content=error,
-                isError=True,
+                is_error=True,
             )
         if ".." in target_dir.parts:
             error = {
@@ -1718,7 +1718,7 @@ async def kupid_lms_download_file(
             return CallToolResult(
                 content=[TextContent(type="text", text=error["message"])],
                 structured_content=error,
-                isError=True,
+                is_error=True,
             )
 
         fname = filename.strip() or None
@@ -1770,7 +1770,7 @@ async def kupid_lms_download_file(
         return CallToolResult(
             content=[TextContent(type="text", text=error["message"])],
             structured_content=error,
-            isError=True,
+            is_error=True,
         )
 
 @server.tool()
