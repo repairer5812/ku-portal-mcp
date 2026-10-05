@@ -1696,8 +1696,8 @@ async def kupid_lms_download_file(
             error = {"success": False, "message": "save_dir가 비어 있습니다."}
             return CallToolResult(
                 content=[TextContent(type="text", text=error["message"])],
-                structured_content=error,
-                is_error=True,
+                structuredContent=error,
+                isError=True,
             )
         target_dir = Path(raw_path).expanduser()
         if not target_dir.is_absolute():
@@ -1707,8 +1707,8 @@ async def kupid_lms_download_file(
             }
             return CallToolResult(
                 content=[TextContent(type="text", text=error["message"])],
-                structured_content=error,
-                is_error=True,
+                structuredContent=error,
+                isError=True,
             )
         if ".." in target_dir.parts:
             error = {
@@ -1717,8 +1717,8 @@ async def kupid_lms_download_file(
             }
             return CallToolResult(
                 content=[TextContent(type="text", text=error["message"])],
-                structured_content=error,
-                is_error=True,
+                structuredContent=error,
+                isError=True,
             )
 
         fname = filename.strip() or None
@@ -1757,20 +1757,20 @@ async def kupid_lms_download_file(
                     type="resource",
                     resource=BlobResourceContents(
                         uri=resource_uri,
-                        mime_type=content_type,
+                        mimeType=content_type,
                         blob=blob,
                     ),
                 ),
             ],
-            structured_content=metadata,
+            structuredContent=metadata,
         )
     except Exception as e:
         logger.error(f"Failed to download LMS file {file_id}: {e}")
         error = {"success": False, "message": f"LMS 파일 다운로드 실패: {e}"}
         return CallToolResult(
             content=[TextContent(type="text", text=error["message"])],
-            structured_content=error,
-            is_error=True,
+            structuredContent=error,
+            isError=True,
         )
 
 @server.tool()
