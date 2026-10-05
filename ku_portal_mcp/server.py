@@ -1742,7 +1742,7 @@ async def kupid_lms_download_file(
         }
 
         blob = base64.b64encode(path.read_bytes()).decode("ascii")
-        resource_uri = f"ku-lms://files/{file_id}/{result['filename']}"
+        resource_uri = f"ku-lms://files/{file_id}"
 
         return CallToolResult(
             content=[
