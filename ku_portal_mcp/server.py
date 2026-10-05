@@ -12,6 +12,7 @@ Provides tools for accessing Korea University portal (KUPID):
 """
 
 import asyncio
+import base64
 import re
 import sys
 import logging
@@ -23,6 +24,7 @@ from typing import Any
 import httpx
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
+from mcp.types import BlobResourceContents, CallToolResult, EmbeddedResource, TextContent
 
 from . import ams
 from .academic import resolve_year_semester
@@ -1672,11 +1674,15 @@ async def kupid_lms_download_file(
     file_id: int,
     save_dir: str,
     filename: str = "",
-) -> dict[str, Any]:
-    """Canvas LMS 파일을 지정한 디렉토리에 다운로드합니다.
+) -> CallToolResult:
+    """Canvas LMS 파일을 다운로드하고 MCP binary resource로 반환합니다.
 
     file_id는 kupid_lms_modules 결과의 items에서 type이 'File'인 항목의
     content_id 필드에서 얻을 수 있습니다.
+
+    파일은 기존과 같이 save_dir에도 저장되며, MCP 클라이언트가 다른 tool로
+    바로 전달할 수 있도록 BlobResourceContents에도 포함됩니다. 메타데이터는
+    structured_content에 유지합니다.
 
     Args:
         file_id: Canvas 파일 ID (items[*].content_id)
@@ -1687,18 +1693,33 @@ async def kupid_lms_download_file(
         # Expand ~ and validate absolute path
         raw_path = save_dir.strip()
         if not raw_path:
-            return {"success": False, "message": "save_dir가 비어 있습니다."}
+            error = {"success": False, "message": "save_dir가 비어 있습니다."}
+            return CallToolResult(
+                content=[TextContent(type="text", text=error["message"])],
+                structured_content=error,
+                isError=True,
+            )
         target_dir = Path(raw_path).expanduser()
         if not target_dir.is_absolute():
-            return {
+            error = {
                 "success": False,
                 "message": f"save_dir는 절대경로여야 합니다: {save_dir}",
             }
+            return CallToolResult(
+                content=[TextContent(type="text", text=error["message"])],
+                structured_content=error,
+                isError=True,
+            )
         if ".." in target_dir.parts:
-            return {
+            error = {
                 "success": False,
                 "message": "save_dir에 '..'를 포함할 수 없습니다.",
             }
+            return CallToolResult(
+                content=[TextContent(type="text", text=error["message"])],
+                structured_content=error,
+                isError=True,
+            )
 
         fname = filename.strip() or None
 
@@ -1706,15 +1727,51 @@ async def kupid_lms_download_file(
             return await download_lms_file(session, fid, d, fn)
 
         result = await _lms_with_retry(_fetch)
-        return {
+        path = Path(result["path"])
+        content_type = result.get("content_type") or "application/octet-stream"
+        metadata = {
             "success": True,
             "file_id": file_id,
-            **result,
+            "path": str(path),
+            "filename": result["filename"],
+            "size": result["size"],
+            "content_type": content_type,
+            "sha256": result["sha256"],
+            "delivery": "mcp_embedded_resource",
+            "embedded": True,
         }
+
+        blob = base64.b64encode(path.read_bytes()).decode("ascii")
+        resource_uri = f"ku-lms://files/{file_id}/{result['filename']}"
+
+        return CallToolResult(
+            content=[
+                TextContent(
+                    type="text",
+                    text=(
+                        f"Downloaded {result['filename']} "
+                        f"({result['size']} bytes, sha256={result['sha256']})"
+                    ),
+                ),
+                EmbeddedResource(
+                    type="resource",
+                    resource=BlobResourceContents(
+                        uri=resource_uri,
+                        mime_type=content_type,
+                        blob=blob,
+                    ),
+                ),
+            ],
+            structured_content=metadata,
+        )
     except Exception as e:
         logger.error(f"Failed to download LMS file {file_id}: {e}")
-        return {"success": False, "message": f"LMS 파일 다운로드 실패: {e}"}
-
+        error = {"success": False, "message": f"LMS 파일 다운로드 실패: {e}"}
+        return CallToolResult(
+            content=[TextContent(type="text", text=error["message"])],
+            structured_content=error,
+            isError=True,
+        )
 
 @server.tool()
 async def kupid_lms_list_boards(course_id: int) -> dict[str, Any]:
