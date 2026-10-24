@@ -1,0 +1,1564 @@
+{
+  "instructions": "Google Drive로 LMS PDF를 보내거나 동기화할 때는 kupid_lms_sync_to_drive를 사용하세요. 게시판 첨부의 실제 canvas_file_id와 기존 과목 폴더 ID를 전달하세요. 원격 다운로드의 urn이나 서버 경로를 다른 플러그인의 file_uri로 꾸미지 마세요.",
+  "tools": [
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "학사 시스템(AMS) 2차 보안인증을 시작해 이메일로 인증 코드를 보냅니다.\n\n    수강신청내역·시간표·성적 조회는 학교 정책상 2차 보안인증이 필요합니다.\n    이 tool을 호출하면 6자리 코드가 발송되며(5분 유효),\n    kupid_ams_auth_verify(code)로 인증을 마치면 약 50분간 세션이 유지됩니다.\n\n    코드는 KUPID 포털에 등록된 이메일로 갑니다. 발송 주소는 이 서버가 아니라\n    학교가 정하며, 응답에는 마스킹된 주소만 담깁니다. 사용자가 따로 등록할\n    것은 없고, 바꾸려면 포털 > My Page > 개인정보 수정에서 하면 됩니다.\n    메일이 보이지 않으면 스팸함을 확인하도록 안내하세요.\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {},
+        "title": "kupid_ams_auth_startArguments",
+        "type": "object"
+      },
+      "name": "kupid_ams_auth_start",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_ams_auth_startDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "이메일로 받은 6자리 코드로 학사 시스템(AMS) 인증을 완료합니다.\n\n    Args:\n        code: 메일로 받은 6자리 인증 코드\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "kupid_ams_auth_verifyArguments",
+        "type": "object"
+      },
+      "name": "kupid_ams_auth_verify",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_ams_auth_verifyDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "KUPID 포털에 로그인하고 세션을 확인합니다.\n\n    환경변수 KU_PORTAL_ID, KU_PORTAL_PW가 설정되어 있어야 합니다.\n    세션이 유효하면 캐시된 세션을 재사용합니다.\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {},
+        "title": "kupid_loginArguments",
+        "type": "object"
+      },
+      "name": "kupid_login",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_loginDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "KUPID 포털의 공지사항 목록을 조회합니다. (로그인 불필요)\n\n    상단 고정 공지가 먼저 오고 그 다음 최신순으로 정렬됩니다.\n    무인증 조회는 최신 500건까지만 가능합니다.\n\n    Args:\n        page: 페이지 번호 (기본값: 1)\n        count: 한 페이지당 항목 수 (기본값: 20)\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "count": {
+            "default": 20,
+            "title": "Count",
+            "type": "integer"
+          },
+          "page": {
+            "default": 1,
+            "title": "Page",
+            "type": "integer"
+          }
+        },
+        "title": "kupid_get_noticesArguments",
+        "type": "object"
+      },
+      "name": "kupid_get_notices",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_get_noticesDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "KUPID 공지사항의 상세 정보를 조회합니다. (로그인 불필요)\n\n    차세대 포털은 본문 전문에 로그인을 요구하므로 요약과 원문 링크를 제공합니다.\n\n    Args:\n        post_seq: 공지사항 post_seq (kupid_get_notices 결과의 post_seq 필드)\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "post_seq": {
+            "title": "Post Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "post_seq"
+        ],
+        "title": "kupid_get_notice_detailArguments",
+        "type": "object"
+      },
+      "name": "kupid_get_notice_detail",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_get_notice_detailDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "고려대학교 학사일정을 조회합니다. (로그인 불필요)\n\n    교무처 학사일정표(registrar.korea.ac.kr)에서 학기별 일정을 가져옵니다.\n\n    Args:\n        year: 학년도 (예: 2026). 0이면 현재 학년도\n        semester: 학기 (1 또는 2). 0이면 현재 학기\n        month: 특정 월만 필터링 (예: \"8월\"). 비우면 전체\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "month": {
+            "default": "",
+            "title": "Month",
+            "type": "string"
+          },
+          "semester": {
+            "default": 0,
+            "title": "Semester",
+            "type": "integer"
+          },
+          "year": {
+            "default": 0,
+            "title": "Year",
+            "type": "integer"
+          }
+        },
+        "title": "kupid_get_schedulesArguments",
+        "type": "object"
+      },
+      "name": "kupid_get_schedules",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_get_schedulesDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "KUPID 포털의 장학공지 목록을 조회합니다. (로그인 불필요)\n\n    Args:\n        page: 페이지 번호 (기본값: 1)\n        count: 한 페이지당 항목 수 (기본값: 20)\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "count": {
+            "default": 20,
+            "title": "Count",
+            "type": "integer"
+          },
+          "page": {
+            "default": 1,
+            "title": "Page",
+            "type": "integer"
+          }
+        },
+        "title": "kupid_get_scholarshipsArguments",
+        "type": "object"
+      },
+      "name": "kupid_get_scholarships",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_get_scholarshipsDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "KUPID 장학공지의 상세 정보를 조회합니다. (로그인 불필요)\n\n    차세대 포털은 본문 전문에 로그인을 요구하므로 요약과 원문 링크를 제공합니다.\n\n    Args:\n        post_seq: 장학공지 post_seq (kupid_get_scholarships 결과의 post_seq 필드)\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "post_seq": {
+            "title": "Post Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "post_seq"
+        ],
+        "title": "kupid_get_scholarship_detailArguments",
+        "type": "object"
+      },
+      "name": "kupid_get_scholarship_detail",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_get_scholarship_detailDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "KUPID 포털 게시판에서 키워드로 검색합니다. (로그인 불필요)\n\n    제목 또는 요약에 키워드가 포함된 항목을 반환합니다.\n    학사일정은 게시판이 아니므로 kupid_get_schedules를 사용하세요.\n\n    Args:\n        keyword: 검색할 키워드\n        board: 검색 대상 (\"all\", \"notice\", \"scholarship\")\n        count: 최대 결과 수 (기본값: 20)\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "board": {
+            "default": "all",
+            "title": "Board",
+            "type": "string"
+          },
+          "count": {
+            "default": 20,
+            "title": "Count",
+            "type": "integer"
+          },
+          "keyword": {
+            "title": "Keyword",
+            "type": "string"
+          }
+        },
+        "required": [
+          "keyword"
+        ],
+        "title": "kupid_searchArguments",
+        "type": "object"
+      },
+      "name": "kupid_search",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_searchDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "고려대학교 도서관 열람실 좌석 현황을 조회합니다.\n\n    인증 없이 실시간 좌석 현황을 확인할 수 있습니다.\n\n    Args:\n        library_name: 도서관 이름 필터 (빈 문자열이면 전체 도서관 조회)\n            - 중앙도서관, 중앙광장, 백주년기념 학술정보관, 과학도서관, 하나스퀘어, 법학도서관\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "library_name": {
+            "default": "",
+            "title": "Library Name",
+            "type": "string"
+          }
+        },
+        "title": "kupid_get_library_seatsArguments",
+        "type": "object"
+      },
+      "name": "kupid_get_library_seats",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_get_library_seatsDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "개인 수업시간표를 조회합니다 (AMS 2차 인증 필요).\n\n    Args:\n        day: 요일 (\"all\"=전체, \"mon\"/\"tue\"/\"wed\"/\"thu\"/\"fri\"/\"sat\")\n        ics_export: True이면 ICS 캘린더 파일 내용도 포함\n        year: 학년도 (기본값: 현재 학기)\n        semester: 학기 (\"1\" 또는 \"2\")\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "day": {
+            "default": "all",
+            "title": "Day",
+            "type": "string"
+          },
+          "ics_export": {
+            "default": false,
+            "title": "Ics Export",
+            "type": "boolean"
+          },
+          "semester": {
+            "default": "",
+            "title": "Semester",
+            "type": "string"
+          },
+          "year": {
+            "default": "",
+            "title": "Year",
+            "type": "string"
+          }
+        },
+        "title": "kupid_get_timetableArguments",
+        "type": "object"
+      },
+      "name": "kupid_get_timetable",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_get_timetableDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "교과목명으로 개설과목을 검색합니다 (AMS 2차 인증 필요).\n\n    학수번호, 분반, 강의실, 건물, 캠퍼스를 반환합니다. 학사 시스템이 제공하는\n    검색 조건이 교과목명뿐이라, 단과대/학과 단위 목록 조회는 지원하지 않습니다.\n\n    Args:\n        subject: 교과목명 키워드 (필수, 부분일치)\n        campus: 캠퍼스로 필터링 (예: \"자연계\", \"인문사회계\")\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "campus": {
+            "default": "",
+            "title": "Campus",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject"
+        ],
+        "title": "kupid_search_coursesArguments",
+        "type": "object"
+      },
+      "name": "kupid_search_courses",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_search_coursesDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "학수번호로 강의계획서를 조회합니다 (로그인 불필요).\n\n    평가 비중(중간/기말/과제 %), 주차별 강의계획, 교재·참고문헌, 성적평가\n    방식(절대/상대), 강의시간·강의실, 담당교수 연락처를 반환합니다.\n\n    Args:\n        course_code: 학수번호 (예: \"AAI117\", \"BDC108\")\n        year: 학년도 (기본: 현재 학년도)\n        semester: 학기 \"1\" 또는 \"2\" (기본: 현재 또는 다가오는 정규학기)\n        section: 분반 (기본 \"00\")\n        grad_dept: 대학원 코드 (기본: SW·AI융합대학원 7298)\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "course_code": {
+            "title": "Course Code",
+            "type": "string"
+          },
+          "grad_dept": {
+            "default": "",
+            "title": "Grad Dept",
+            "type": "string"
+          },
+          "section": {
+            "default": "00",
+            "title": "Section",
+            "type": "string"
+          },
+          "semester": {
+            "default": "",
+            "title": "Semester",
+            "type": "string"
+          },
+          "year": {
+            "default": "",
+            "title": "Year",
+            "type": "string"
+          }
+        },
+        "required": [
+          "course_code"
+        ],
+        "title": "kupid_syllabusArguments",
+        "type": "object"
+      },
+      "name": "kupid_syllabus",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_syllabusDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "교과목명으로 강의실을 조회합니다 (AMS 2차 인증 필요).\n\n    학사 시스템의 강의실안내조회는 교과목명 키워드로만 검색할 수 있어,\n    \"이 강의실에 무슨 수업이 있나\"가 아니라 \"이 과목이 어느 강의실인가\"를 답합니다.\n    건물·호실은 결과를 좁히는 필터로 쓰입니다.\n\n    Args:\n        subject: 교과목명 키워드 (필수, 부분일치)\n        building: 건물명으로 결과 필터링 (예: \"정보통신관\")\n        room: 강의실명으로 결과 필터링 (예: \"604\")\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "building": {
+            "default": "",
+            "title": "Building",
+            "type": "string"
+          },
+          "room": {
+            "default": "",
+            "title": "Room",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject"
+        ],
+        "title": "kupid_room_scheduleArguments",
+        "type": "object"
+      },
+      "name": "kupid_room_schedule",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_room_scheduleDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "내 수강신청 내역을 조회합니다 (AMS 2차 인증 필요).\n\n    학수번호, 강의시간, 강의실, 교수, 학점, 이수구분 등 상세 정보를 반환합니다.\n    대학원 과목도 포함됩니다.\n\n    Args:\n        year: 학년도 (기본값: 현재 학기 기준 자동 선택)\n        semester: 학기 (\"1\"=1학기, \"2\"=2학기)\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "semester": {
+            "default": "",
+            "title": "Semester",
+            "type": "string"
+          },
+          "year": {
+            "default": "",
+            "title": "Year",
+            "type": "string"
+          }
+        },
+        "title": "kupid_my_coursesArguments",
+        "type": "object"
+      },
+      "name": "kupid_my_courses",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_my_coursesDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "전체 성적, 누적 GPA, 취득학점을 조회합니다 (AMS 2차 인증 필요).\n\n    Args:\n        year_term: 학년도/학기 코드로 필터 (예: \"20261R\"). 비우면 전체\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "year_term": {
+            "default": "",
+            "title": "Year Term",
+            "type": "string"
+          }
+        },
+        "title": "kupid_get_all_gradesArguments",
+        "type": "object"
+      },
+      "name": "kupid_get_all_grades",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_get_all_gradesDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "학과/대학원 홈페이지 공지사항을 조회합니다 (인증 불필요).\n\n    고려대학교 학과 홈페이지의 공지사항 게시판을 스크래핑합니다.\n    site_name을 지정하지 않으면 사용 가능한 사이트 목록을 반환합니다.\n\n    환경변수 KU_DEPT_URLS로 소속 학과를 설정할 수 있습니다.\n    형식: \"라벨|URL,라벨|URL,...\"\n    예: \"SW·AI융합대학원|https://gscit.korea.ac.kr/gscit/board/notice_master.do\"\n\n    Args:\n        site_name: 사이트 이름 또는 키 (빈 문자열이면 사이트 목록 반환)\n        page: 페이지 번호 (기본값: 1)\n        count: 한 페이지당 항목 수 (기본값: 20)\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "count": {
+            "default": 20,
+            "title": "Count",
+            "type": "integer"
+          },
+          "page": {
+            "default": 1,
+            "title": "Page",
+            "type": "integer"
+          },
+          "site_name": {
+            "default": "",
+            "title": "Site Name",
+            "type": "string"
+          }
+        },
+        "title": "kupid_dept_noticesArguments",
+        "type": "object"
+      },
+      "name": "kupid_dept_notices",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_dept_noticesDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "학과/대학원 공지사항의 상세 내용을 조회합니다 (인증 불필요).\n\n    kupid_dept_notices로 조회한 공지의 상세 내용을 가져옵니다.\n\n    Args:\n        site_name: 사이트 이름 또는 키 (kupid_dept_notices에서 사용한 값)\n        article_no: 게시글 번호 (kupid_dept_notices 결과의 article_no 필드)\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "article_no": {
+            "title": "Article No",
+            "type": "string"
+          },
+          "site_name": {
+            "title": "Site Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "site_name",
+          "article_no"
+        ],
+        "title": "kupid_dept_notice_detailArguments",
+        "type": "object"
+      },
+      "name": "kupid_dept_notice_detail",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_dept_notice_detailDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "Canvas LMS 수강과목 목록을 조회합니다.\n\n    mylms.korea.ac.kr의 Canvas LMS에서 수강 중인 과목 목록을 가져옵니다.\n    SSO 로그인이 필요합니다.\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {},
+        "title": "kupid_lms_coursesArguments",
+        "type": "object"
+      },
+      "name": "kupid_lms_courses",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_lms_coursesDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "Canvas LMS 과제 목록을 조회합니다.\n\n    특정 과목의 전체 과제(assignments) 목록을 가져옵니다.\n    기본적으로 완료/마감 과제 포함 전체를 반환합니다.\n    kupid_lms_courses로 course_id를 먼저 확인하세요.\n\n    Args:\n        course_id: 과목 ID (kupid_lms_courses의 id 필드)\n        upcoming_only: True이면 마감 전 과제만 표시 (기본값: False, 전체 과제 반환)\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "course_id": {
+            "title": "Course Id",
+            "type": "integer"
+          },
+          "upcoming_only": {
+            "default": false,
+            "title": "Upcoming Only",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "course_id"
+        ],
+        "title": "kupid_lms_assignmentsArguments",
+        "type": "object"
+      },
+      "name": "kupid_lms_assignments",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_lms_assignmentsDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "Canvas LMS 강의자료(모듈)를 조회합니다.\n\n    주차별 강의 모듈과 포함된 자료를 가져옵니다.\n    kupid_lms_courses로 course_id를 먼저 확인하세요.\n\n    Args:\n        course_id: 과목 ID (kupid_lms_courses의 id 필드)\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "course_id": {
+            "title": "Course Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "course_id"
+        ],
+        "title": "kupid_lms_modulesArguments",
+        "type": "object"
+      },
+      "name": "kupid_lms_modules",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_lms_modulesDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "Canvas LMS 할 일(Todo) 목록을 조회합니다.\n\n    마감이 다가오는 과제, 퀴즈 등을 보여줍니다.\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {},
+        "title": "kupid_lms_todoArguments",
+        "type": "object"
+      },
+      "name": "kupid_lms_todo",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_lms_todoDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "Canvas LMS 대시보드를 조회합니다.\n\n    현재 수강 중인 과목 카드와 과제/이벤트 현황을 보여줍니다.\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {},
+        "title": "kupid_lms_dashboardArguments",
+        "type": "object"
+      },
+      "name": "kupid_lms_dashboard",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_lms_dashboardDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "Canvas LMS 공지(announcement)를 조회합니다.\n\n    course_id를 지정하면 해당 과목, 생략하면 현재 활성 과목 전체의 공지를\n    가져옵니다. kupid_lms_dashboard와 달리 message 본문을 절단하지 않고\n    전문(HTML)으로 반환합니다.\n\n    Args:\n        course_id: 과목 ID (생략 시 활성 과목 전체, kupid_lms_courses 참조)\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "course_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Course Id"
+          }
+        },
+        "title": "kupid_lms_announcementsArguments",
+        "type": "object"
+      },
+      "name": "kupid_lms_announcements",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_lms_announcementsDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "Canvas LMS 성적/점수를 조회합니다.\n\n    과목별 현재 점수, 최종 점수, 학점(grade)을 확인합니다.\n    kupid_lms_courses로 course_id를 먼저 확인하세요.\n\n    Args:\n        course_id: 과목 ID (kupid_lms_courses의 id 필드)\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "course_id": {
+            "title": "Course Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "course_id"
+        ],
+        "title": "kupid_lms_gradesArguments",
+        "type": "object"
+      },
+      "name": "kupid_lms_grades",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_lms_gradesDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "Canvas LMS 과제 제출 현황을 조회합니다.\n\n    과목의 전체 과제에 대한 제출 여부, 점수, 채점 상태를 확인합니다.\n    kupid_lms_courses로 course_id를 먼저 확인하세요.\n\n    Args:\n        course_id: 과목 ID (kupid_lms_courses의 id 필드)\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "course_id": {
+            "title": "Course Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "course_id"
+        ],
+        "title": "kupid_lms_submissionsArguments",
+        "type": "object"
+      },
+      "name": "kupid_lms_submissions",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_lms_submissionsDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "Canvas LMS 퀴즈/시험 목록을 조회합니다.\n\n    과목의 퀴즈, 시험, 설문 목록과 마감일, 시간제한 등을 확인합니다.\n    kupid_lms_courses로 course_id를 먼저 확인하세요.\n\n    Args:\n        course_id: 과목 ID (kupid_lms_courses의 id 필드)\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "course_id": {
+            "title": "Course Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "course_id"
+        ],
+        "title": "kupid_lms_quizzesArguments",
+        "type": "object"
+      },
+      "name": "kupid_lms_quizzes",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_lms_quizzesDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "Canvas LMS 수업 계획서(syllabus)를 조회합니다.\n\n    과목의 수업 계획서 내용을 가져옵니다.\n    course_code(예: BDC115) 또는 course_id 중 하나를 입력하세요.\n    course_code를 입력하면 수강과목 목록에서 자동으로 course_id를 찾습니다.\n\n    Args:\n        course_code: 과목코드 (예: BDC115). course_id 대신 사용 가능\n        course_id: 과목 ID (kupid_lms_courses의 id 필드). course_code 대신 사용 가능\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "course_code": {
+            "default": "",
+            "title": "Course Code",
+            "type": "string"
+          },
+          "course_id": {
+            "default": 0,
+            "title": "Course Id",
+            "type": "integer"
+          }
+        },
+        "title": "kupid_lms_syllabusArguments",
+        "type": "object"
+      },
+      "name": "kupid_lms_syllabus",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_lms_syllabusDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "Canvas LMS 파일을 다운로드합니다. Drive 전송에는 kupid_lms_sync_to_drive를 사용하세요.\n\n    file_id는 kupid_lms_modules 결과의 items에서 type이 'File'인 항목의\n    content_id 필드에서 얻을 수 있습니다.\n\n    Args:\n        file_id: Canvas 파일 ID (items[*].content_id)\n        save_dir: 저장할 디렉토리 절대경로 (예: /Users/me/Documents/lecture)\n        filename: 저장 파일명 (생략 시 Canvas 원본 파일명 사용)\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "file_id": {
+            "title": "File Id",
+            "type": "integer"
+          },
+          "filename": {
+            "default": "",
+            "title": "Filename",
+            "type": "string"
+          },
+          "save_dir": {
+            "title": "Save Dir",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "save_dir"
+        ],
+        "title": "kupid_lms_download_fileArguments",
+        "type": "object"
+      },
+      "name": "kupid_lms_download_file",
+      "outputSchema": null,
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read",
+              "ku:drive"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": {
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false,
+        "readOnlyHint": false,
+        "title": null
+      },
+      "description": "LMS 원본 강의자료를 기존 Google Drive 과목 폴더로 전송하고 크기·SHA-256을 검증합니다.\n\n    PDF, Jupyter 노트북(.ipynb), Office 문서, 텍스트·코드·압축파일 등을 원본 그대로 전송합니다.\n    파일을 실행하거나 문서 형식을 변환하지 않습니다. file_ids만 입력하면 LMS 소속 과목을\n    확인해 서버에 연결된 기존 과목 Drive 폴더를 자동 선택하므로 사용자가 매번 지정할 필요가 없습니다.\n    원본 바이트를 유지하며 신규 파일명에는 자료 종류 prefix를 붙입니다.\n    기존 Drive 파일명은 보존하고 같은 내용은 건너뛰며 수정본은 기존 Drive ID를 유지합니다.\n    새 폴더/공유를 만들지 않으며 파일 하나가 실패해도 나머지는 계속 처리합니다.\n    실패 결과에는 error_code, error_message, stage가 텍스트와 구조화 응답에 모두 포함됩니다.\n    원격 호출에는 별도로 승인한 ku:drive 권한이 필요합니다.\n\n    Args:\n        file_ids: 실제 LMS 첨부파일 ID 목록 (1~20개, 예: [6258929]).\n        drive_folder_id: 생략하면 과목별 기존 폴더 자동 선택. 명시할 경우 서버에 허용된 기존 폴더 ID.\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "drive_folder_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Drive Folder Id"
+          },
+          "file_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "File Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "file_ids"
+        ],
+        "title": "kupid_lms_sync_to_driveArguments",
+        "type": "object"
+      },
+      "name": "kupid_lms_sync_to_drive",
+      "outputSchema": null,
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read",
+            "ku:drive"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "Canvas LMS 과목의 게시판 목록을 조회합니다.\n\n    Q&A 게시판, 강의자료실 등 교수님이 자료를 올리는 게시판들을 반환합니다.\n    Canvas 네이티브 모듈(kupid_lms_modules)에 자료가 없으면 여기서 찾아보세요.\n\n    Args:\n        course_id: 과목 ID (kupid_lms_courses의 id 필드)\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "course_id": {
+            "title": "Course Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "course_id"
+        ],
+        "title": "kupid_lms_list_boardsArguments",
+        "type": "object"
+      },
+      "name": "kupid_lms_list_boards",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_lms_list_boardsDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "게시판의 게시글 목록을 조회합니다.\n\n    Args:\n        course_id: 과목 ID\n        board_id: 게시판 ID (kupid_lms_list_boards의 id 필드)\n        page: 페이지 번호 (기본 1)\n        keyword: 제목 검색어 (기본 전체)\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "board_id": {
+            "title": "Board Id",
+            "type": "integer"
+          },
+          "course_id": {
+            "title": "Course Id",
+            "type": "integer"
+          },
+          "keyword": {
+            "default": "",
+            "title": "Keyword",
+            "type": "string"
+          },
+          "page": {
+            "default": 1,
+            "title": "Page",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "course_id",
+          "board_id"
+        ],
+        "title": "kupid_lms_list_board_postsArguments",
+        "type": "object"
+      },
+      "name": "kupid_lms_list_board_posts",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_lms_list_board_postsDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    },
+    {
+      "_meta": {
+        "securitySchemes": [
+          {
+            "scopes": [
+              "ku:read"
+            ],
+            "type": "oauth2"
+          }
+        ]
+      },
+      "annotations": null,
+      "description": "게시글 상세와 첨부파일, 댓글(첨부 포함)을 조회합니다.\n\n    attachments의 canvas_file_id를 kupid_lms_download_file의 file_id로\n    넘기면 파일을 다운로드할 수 있습니다. attachments[].url은 직접\n    다운로드 링크입니다(시간제한 verifier 토큰 포함).\n\n    comments에는 각 댓글의 본문과 첨부파일(동영상/PDF 등)이 포함됩니다.\n    예: 텀프로젝트 게시판에서 팀별 발표 동영상은 댓글 첨부로 제출됩니다.\n\n    Args:\n        course_id: 과목 ID\n        board_id: 게시판 ID\n        post_id: 게시글 ID (kupid_lms_list_board_posts의 id 필드)\n    ",
+      "execution": null,
+      "icons": null,
+      "inputSchema": {
+        "properties": {
+          "board_id": {
+            "title": "Board Id",
+            "type": "integer"
+          },
+          "course_id": {
+            "title": "Course Id",
+            "type": "integer"
+          },
+          "post_id": {
+            "title": "Post Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "course_id",
+          "board_id",
+          "post_id"
+        ],
+        "title": "kupid_lms_get_board_postArguments",
+        "type": "object"
+      },
+      "name": "kupid_lms_get_board_post",
+      "outputSchema": {
+        "additionalProperties": true,
+        "title": "kupid_lms_get_board_postDictOutput",
+        "type": "object"
+      },
+      "securitySchemes": [
+        {
+          "scopes": [
+            "ku:read"
+          ],
+          "type": "oauth2"
+        }
+      ],
+      "title": null
+    }
+  ]
+}
