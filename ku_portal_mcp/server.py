@@ -12,6 +12,7 @@ Provides tools for accessing Korea University portal (KUPID):
 """
 
 import asyncio
+import json
 import base64
 import hashlib
 import mimetypes
@@ -25,6 +26,7 @@ from dataclasses import asdict
 from datetime import date
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 from dotenv import load_dotenv
@@ -34,6 +36,8 @@ from mcp.types import (
     CallToolResult,
     EmbeddedResource,
     TextContent,
+    ToolAnnotations,
+    Tool as MCPTool,
 )
 
 from . import ams
@@ -79,10 +83,15 @@ from .lms import (
     fetch_lms_quizzes,
     fetch_lms_syllabus,
     download_lms_file,
+    LMSFileTooLargeError,
     fetch_lms_boards,
     fetch_lms_board_posts,
     fetch_lms_board_post,
 )
+from mcp.server.auth.middleware.auth_context import get_access_token
+from .drive import DriveClient, DriveSyncError, validate_folder_id, MAX_FILE_BYTES, configured_course_folders
+from .lms import resolve_lms_file_course, LMSFileCourseError
+
 from . import __version__
 
 # Load .env file (looks in cwd, then project root)
@@ -132,7 +141,29 @@ def _max_embedded_file_bytes() -> int:
 server = FastMCP(
     "KU Portal",
     dependencies=["httpx", "beautifulsoup4", "lxml"],
+    instructions=("Google Drive로 LMS PDF를 보내거나 동기화할 때는 kupid_lms_sync_to_drive를 사용하세요. "
+                  "게시판 첨부의 실제 canvas_file_id와 기존 과목 폴더 ID를 전달하세요. "
+                  "원격 다운로드의 urn이나 서버 경로를 다른 플러그인의 file_uri로 꾸미지 마세요."),
 )
+
+# FastMCP supports _meta but not the top-level ChatGPT auth extension.
+# Publish both representations, and keep the ordinary MCP input/output schemas.
+_original_list_tools = server.list_tools
+
+
+async def _list_tools_with_security_schemes() -> list[MCPTool]:
+    tools = await _original_list_tools()
+    for tool in tools:
+        scopes = ["ku:read", "ku:drive"] if tool.name == "kupid_lms_sync_to_drive" else ["ku:read"]
+        schemes = [{"type": "oauth2", "scopes": scopes}]
+        tool.securitySchemes = schemes
+        tool.meta = {**(tool.meta or {}), "securitySchemes": schemes}
+    return tools
+
+
+server.list_tools = _list_tools_with_security_schemes
+server._mcp_server.list_tools()(_list_tools_with_security_schemes)
+
 
 # Module-level session cache with async locks to prevent race conditions
 _session: Session | None = None
@@ -1715,7 +1746,7 @@ async def kupid_lms_download_file(
     save_dir: str,
     filename: str = "",
 ) -> CallToolResult:
-    """Canvas LMS 파일을 지정한 디렉토리에 다운로드합니다.
+    """Canvas LMS 파일을 다운로드합니다. Drive 전송에는 kupid_lms_sync_to_drive를 사용하세요.
 
     file_id는 kupid_lms_modules 결과의 items에서 type이 'File'인 항목의
     content_id 필드에서 얻을 수 있습니다.
@@ -1863,6 +1894,144 @@ async def kupid_lms_download_file(
                     "Failed to remove remote LMS temporary directory: %s",
                     remote_temp_dir,
                 )
+
+
+
+_drive_sync_lock = asyncio.Lock()
+
+
+@server.tool(
+    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=False, idempotentHint=True),
+    meta={"securitySchemes": [{"type": "oauth2", "scopes": ["ku:read", "ku:drive"]}]},
+)
+async def kupid_lms_sync_to_drive(
+    file_ids: list[int],
+    drive_folder_id: str | None = None,
+) -> CallToolResult:
+    """LMS 원본 강의자료를 기존 Google Drive 과목 폴더로 전송하고 크기·SHA-256을 검증합니다.
+
+    PDF, Jupyter 노트북(.ipynb), Office 문서, 텍스트·코드·압축파일 등을 원본 그대로 전송합니다.
+    파일을 실행하거나 문서 형식을 변환하지 않습니다. file_ids만 입력하면 LMS 소속 과목을
+    확인해 서버에 연결된 기존 과목 Drive 폴더를 자동 선택하므로 사용자가 매번 지정할 필요가 없습니다.
+    원본 바이트를 유지하며 신규 파일명에는 자료 종류 prefix를 붙입니다.
+    기존 Drive 파일명은 보존하고 같은 내용은 건너뛰며 수정본은 기존 Drive ID를 유지합니다.
+    새 폴더/공유를 만들지 않으며 파일 하나가 실패해도 나머지는 계속 처리합니다.
+    실패 결과에는 error_code, error_message, stage가 텍스트와 구조화 응답에 모두 포함됩니다.
+    원격 호출에는 별도로 승인한 ku:drive 권한이 필요합니다.
+
+    Args:
+        file_ids: 실제 LMS 첨부파일 ID 목록 (1~20개, 예: [6258929]).
+        drive_folder_id: 생략하면 과목별 기존 폴더 자동 선택. 명시할 경우 서버에 허용된 기존 폴더 ID.
+    """
+    def error_details(exc, stage):
+        if isinstance(exc, (DriveSyncError, LMSFileCourseError)):
+            return {"error_code": exc.error_code, "error_message": str(exc),
+                    "stage": getattr(exc, "stage", None) or stage}
+        if isinstance(exc, LMSFileTooLargeError):
+            return {"error_code": "FILE_TOO_LARGE", "error_message": str(exc), "stage": stage}
+        messages = {
+            "resolve_course": "LMS 파일의 소속 과목을 확인하지 못했습니다.",
+            "download_lms": "LMS 원본 파일 다운로드에 실패했습니다.",
+            "authenticate_drive": "Google Drive 연결 또는 인증에 실패했습니다.",
+            "check_folder": "기존 Drive 대상 폴더를 확인하지 못했습니다.",
+            "sync_file": "Drive 전송 또는 검증 중 오류가 발생했습니다.",
+        }
+        return {"error_code": {"download_lms": "LMS_DOWNLOAD_FAILED", "resolve_course": "COURSE_LOOKUP_FAILED"}.get(stage, "SYNC_FAILED"),
+                "error_message": messages.get(stage, "Drive 전송 설정 또는 연결을 확인하세요."),
+                "stage": stage}
+
+    def tool_result(payload, summary, *, meta=None):
+        # Some clients show only text content, so do not hide per-file errors there.
+        kwargs = {"_meta": meta} if meta else {}
+        return CallToolResult(
+            isError=not payload["success"],
+            content=[TextContent(type="text", text=summary + "\n" + json.dumps(payload, ensure_ascii=False))],
+            structuredContent=payload, **kwargs,
+        )
+
+    if os.environ.get("MCP_PUBLIC_BASE_URL"):
+        token = get_access_token()
+        if token is None or "ku:drive" not in token.scopes:
+            message = "Drive 전송 권한(ku:drive)이 필요합니다. KU Portal 연결 권한을 다시 승인하세요."
+            public = urlsplit(os.environ["MCP_PUBLIC_BASE_URL"].rstrip("/"))
+            resource_metadata = (
+                f"{public.scheme}://{public.netloc}/.well-known/oauth-protected-resource"
+                f"{public.path}/mcp"
+            )
+            return tool_result(
+                {"success": False, "message": message, "error_code": "INSUFFICIENT_SCOPE",
+                 "error_message": message, "stage": "authorize", "results": []},
+                message, meta={"mcp/www_authenticate": (
+                    f'Bearer resource_metadata="{resource_metadata}", '
+                    'error="insufficient_scope", scope="ku:read ku:drive"'
+                )},
+            )
+    client = None
+    results = []
+    stage = "validate_arguments"
+    try:
+        if not 1 <= len(file_ids) <= 20 or any(isinstance(i, bool) or i <= 0 for i in file_ids):
+            raise DriveSyncError("file_ids에 1~20개의 양의 LMS 파일 ID를 넣으세요.",
+                                 code="INVALID_ARGUMENT", stage=stage)
+        if len(set(file_ids)) != len(file_ids):
+            raise DriveSyncError("file_ids에 같은 파일 ID를 중복해서 넣을 수 없습니다.",
+                                 code="INVALID_ARGUMENT", stage=stage)
+        if drive_folder_id is not None:
+            validate_folder_id(drive_folder_id)
+            course_folders = {}
+        else:
+            course_folders = configured_course_folders()
+        async with _drive_sync_lock:
+            stage = "authenticate_drive"
+            client = await DriveClient.connect()
+            checked_folders = set()
+            for file_id in file_ids:
+                folder_id = drive_folder_id
+                course_id = None
+                filename = None
+                try:
+                    if folder_id is None:
+                        stage = "resolve_course"
+                        course_id = await _lms_with_retry(
+                            lambda session, fid=file_id: resolve_lms_file_course(session, fid, list(course_folders))
+                        )
+                        folder_id = course_folders[course_id]
+                    if folder_id not in checked_folders:
+                        stage = "check_folder"
+                        await client.check_folder(folder_id)
+                        checked_folders.add(folder_id)
+                    with tempfile.TemporaryDirectory(prefix="ku-drive-sync-") as directory:
+                        stage = "download_lms"
+                        async def fetch(session, fid=file_id, target=Path(directory)):
+                            return await download_lms_file(session, fid, target, max_bytes=MAX_FILE_BYTES)
+                        downloaded = await _lms_with_retry(fetch)
+                        path = Path(downloaded["path"])
+                        filename = path.name
+                        stage = "sync_file"
+                        result = await client.sync_file(file_id, path, folder_id)
+                        results.append({"success": True, "course_id": course_id,
+                                        "drive_folder_id": folder_id, **result})
+                except Exception as exc:
+                    details = error_details(exc, stage)
+                    logger.warning("LMS Drive sync failed file_id=%d code=%s stage=%s exception=%s",
+                                   file_id, details["error_code"], details["stage"], type(exc).__name__)
+                    results.append({"success": False, "file_id": file_id, "filename": filename,
+                                    "course_id": course_id, "drive_folder_id": folder_id, "action": "failed",
+                                    "message": details["error_message"], **details})
+        failures = sum(not row["success"] for row in results)
+        message = f"LMS 강의자료 Drive 전송: {len(results)-failures}개 성공, {failures}개 실패."
+        return tool_result(
+            {"success": failures == 0, "drive_folder_id": drive_folder_id,
+             "succeeded": len(results)-failures, "failed": failures, "results": results},
+            message,
+        )
+    except Exception as exc:
+        details = error_details(exc, stage)
+        return tool_result({"success": False, "message": details["error_message"],
+                            "results": results, **details}, details["error_message"])
+    finally:
+        if client:
+            await client.close()
 
 
 @server.tool()

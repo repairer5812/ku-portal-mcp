@@ -70,6 +70,8 @@ OWNER_IPS = {
 }
 DB_PATH = Path(os.environ.get("MCP_OAUTH_DB", "/home/app/.cache/ku-portal-mcp/oauth.sqlite3"))
 SCOPE = "ku:read"
+DRIVE_SCOPE = "ku:drive"
+SUPPORTED_SCOPES = [SCOPE, DRIVE_SCOPE]
 PUBLIC_URL = urlparse(PUBLIC_BASE)
 PUBLIC_ORIGIN = f"{PUBLIC_URL.scheme}://{PUBLIC_URL.netloc}"
 CONSENT_COOKIE_PATH = f"{PUBLIC_URL.path.rstrip('/')}/consent" or "/consent"
@@ -293,7 +295,10 @@ class OwnerOAuthProvider:
             payload = self._decrypt_client_payload(row[0])
             if payload is None:
                 return None
-        return OAuthClientInformationFull.model_validate_json(payload)
+        client = OAuthClientInformationFull.model_validate_json(payload)
+        # Advertise newly available scopes; existing grants remain unchanged.
+        client.scope = " ".join(dict.fromkeys((client.scope or SCOPE).split() + [DRIVE_SCOPE]))
+        return client
 
     async def register_client(self, client_info: OAuthClientInformationFull) -> None:
         self._prune_expired()
@@ -385,6 +390,8 @@ class OwnerOAuthProvider:
 
     async def authorize(self, client: OAuthClientInformationFull, params: AuthorizationParams) -> str:
         self._prune_expired()
+        if params.scopes and not set(params.scopes).issubset(SUPPORTED_SCOPES):
+            raise AuthorizeError(error="invalid_scope", error_description="Unsupported scope")
         token = secrets.token_urlsafe(32)
         payload = {
             "client_id": client.client_id,
@@ -580,6 +587,16 @@ class OwnerOAuthProvider:
             self.db.commit()
             return True
 
+    def authorization_scopes(self, request_token: str) -> list[str]:
+        with self._lock:
+            row = self.db.execute(
+                "SELECT payload, expires_at FROM pending WHERE token_hash = ?",
+                (_digest(request_token),),
+            ).fetchone()
+        if not row or row[1] < time.time():
+            return []
+        return json.loads(row[0]).get("scopes", [])
+
     def record_failed_owner_approval(self, request_token: str) -> None:
         """Invalidate a pending approval after three wrong owner secrets."""
         with self._lock:
@@ -682,14 +699,24 @@ def _has_valid_owner_approval_secret(candidate: str) -> bool:
     return secrets.compare_digest(_digest(candidate), _digest(OWNER_APPROVAL_SECRET))
 
 
-def _secure_response(response):
+def _secure_response(
+    response, *, referrer_policy: str = "no-referrer", allow_chatgpt_redirect: bool = False
+):
     response.headers["Cache-Control"] = "no-store"
     response.headers["Pragma"] = "no-cache"
+    form_action = "'self'"
+    if allow_chatgpt_redirect:
+        # Chrome applies form-action to the redirect after a native form POST.
+        # Match the official callbacks already allowed by client registration.
+        form_action += (
+            " https://chatgpt.com/connector_platform_oauth_redirect"
+            " https://chatgpt.com/connector/oauth/"
+        )
     response.headers["Content-Security-Policy"] = (
-        "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; "
+        f"default-src 'none'; style-src 'unsafe-inline'; form-action {form_action}; "
         "base-uri 'none'; frame-ancestors 'none'"
     )
-    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Referrer-Policy"] = referrer_policy
     response.headers["X-Content-Type-Options"] = "nosniff"
     return response
 
@@ -737,9 +764,9 @@ async def consent(request: Request):
                     "Authorization request expired or invalid.", status_code=400
                 )
             )
-        response = RedirectResponse(redirect, status_code=302)
+        response = RedirectResponse(redirect, status_code=303)
         response.delete_cookie(CSRF_COOKIE_NAME, path=CONSENT_COOKIE_PATH)
-        return _secure_response(response)
+        return _secure_response(response, allow_chatgpt_redirect=True)
     csrf_token = request.cookies.get(CSRF_COOKIE_NAME) or secrets.token_urlsafe(32)
     if not token or not provider.prepare_consent(token, csrf_token):
         return _secure_response(
@@ -747,6 +774,13 @@ async def consent(request: Request):
                 "Authorization request expired or invalid.", status_code=400
             )
         )
+    consent_description = (
+        "ChatGPT가 개인 KUPID/LMS 정보를 읽고, 설정된 기존 과목 Drive 폴더에 "
+        "LMS 강의자료를 추가하거나 수정본으로 갱신하도록 허용합니다. "
+        "폴더 생성이나 공유 변경은 하지 않습니다."
+        if DRIVE_SCOPE in provider.authorization_scopes(token)
+        else "ChatGPT가 개인 KUPID/LMS 정보를 읽도록 허용합니다. 쓰기 기능은 제공하지 않습니다."
+    )
     safe_token = html.escape(token, quote=True)
     safe_csrf_token = html.escape(csrf_token, quote=True)
     response = HTMLResponse(
@@ -754,7 +788,7 @@ async def consent(request: Request):
         "<title>KU Portal MCP authorization</title>"
         "<main style='max-width:36rem;margin:10vh auto;font:16px system-ui;padding:2rem'>"
         "<h1>KU Portal MCP 연결 승인</h1>"
-        "<p>ChatGPT가 개인 KUPID/LMS 정보를 읽도록 허용합니다. 쓰기 기능은 제공하지 않습니다.</p>"
+        f"<p>{html.escape(consent_description)}</p>"
         f"<form method='post'><input type='hidden' name='request' value='{safe_token}'>"
         f"<input type='hidden' name='csrf_token' value='{safe_csrf_token}'>"
         "<label>소유자 승인 암호 <input type='password' name='owner_secret' "
@@ -771,7 +805,28 @@ async def consent(request: Request):
         httponly=True,
         samesite="strict",
     )
-    return _secure_response(response)
+    # Native form POSTs under no-referrer send Origin: null. Retain the
+    # same-origin header for verification without sharing referrers off-site.
+    return _secure_response(
+        response, referrer_policy="same-origin", allow_chatgpt_redirect=True
+    )
+
+
+def _advertise_optional_drive_scope(app) -> None:
+    # required_scopes protects the MCP endpoint; supported scopes describes
+    # optional tool permissions. Do not make ku:drive required for read tools.
+    from mcp.server.auth.routes import create_protected_resource_routes
+    routes = create_protected_resource_routes(
+        resource_url=AnyHttpUrl(RESOURCE_URL),
+        authorization_servers=[AnyHttpUrl(PUBLIC_BASE)],
+        scopes_supported=SUPPORTED_SCOPES,
+    )
+    replacement = routes[0]
+    for index, route in enumerate(app.routes):
+        if getattr(route, "path", None) == replacement.path:
+            app.routes[index] = replacement
+            return
+    raise RuntimeError("MCP protected resource metadata route was not found")
 
 
 def main() -> None:
@@ -791,7 +846,7 @@ def main() -> None:
         required_scopes=[SCOPE],
         client_registration_options=ClientRegistrationOptions(
             enabled=True,
-            valid_scopes=[SCOPE],
+            valid_scopes=SUPPORTED_SCOPES,
             default_scopes=[SCOPE],
         ),
         revocation_options=RevocationOptions(enabled=True),
@@ -800,7 +855,11 @@ def main() -> None:
     from mcp.server.auth.provider import ProviderTokenVerifier
 
     server._token_verifier = ProviderTokenVerifier(provider)
-    server.run(transport="streamable-http")
+    import uvicorn
+    app = server.streamable_http_app()
+    _advertise_optional_drive_scope(app)
+    uvicorn.run(app, host=server.settings.host, port=server.settings.port,
+                log_level=server.settings.log_level.lower(), lifespan="on")
 
 
 if __name__ == "__main__":

@@ -677,11 +677,17 @@ def _publish_download(partial: Path, save_dir: Path, desired_name: str) -> Path:
             return candidate
 
 
+class LMSFileTooLargeError(Exception):
+    """A hard download limit; do not retry or renew the LMS login."""
+
+
 async def download_lms_file(
     session: LMSSession,
     file_id: int,
     save_dir: Path,
     filename: str | None = None,
+    *,
+    max_bytes: int | None = None,
 ) -> dict:
     """Download a Canvas file to save_dir.
 
@@ -762,6 +768,8 @@ async def download_lms_file(
                                     "PDF 다운로드 실패: 실제 응답이 PDF가 아닙니다 "
                                     f"(content-type={response_content_type or 'unknown'})"
                                 )
+                        if max_bytes is not None and total + len(chunk) > max_bytes:
+                            raise LMSFileTooLargeError("LMS PDF exceeds the configured download limit")
                         f.write(chunk)
                         total += len(chunk)
 
@@ -810,3 +818,34 @@ async def fetch_lms_syllabus(
         )
         resp.raise_for_status()
         return resp.json()
+
+
+class LMSFileCourseError(RuntimeError):
+    def __init__(self, message: str, *, code: str):
+        super().__init__(message)
+        self.error_code = code
+        self.stage = "resolve_course"
+
+
+async def resolve_lms_file_course(session: LMSSession, file_id: int, course_ids: list[int]) -> int:
+    """Prove file membership through Canvas course-scoped file endpoints."""
+    matches = []
+    async with _api_client(session) as client:
+        for course_id in course_ids:
+            response = await client.get(f"/api/v1/courses/{course_id}/files/{file_id}")
+            if response.status_code == 404:
+                continue
+            response.raise_for_status()
+            if response.json().get("id") == file_id:
+                matches.append(course_id)
+    if len(matches) > 1:
+        raise LMSFileCourseError(
+            "파일이 여러 설정 과목에 연결되어 있어 대상 폴더를 자동 결정하지 못했습니다.",
+            code="COURSE_AMBIGUOUS",
+        )
+    if not matches:
+        raise LMSFileCourseError(
+            "파일이 서버에 연결된 과목에 속하지 않습니다. 해당 과목의 폴더 연결 설정이 필요합니다.",
+            code="COURSE_NOT_CONFIGURED",
+        )
+    return matches[0]

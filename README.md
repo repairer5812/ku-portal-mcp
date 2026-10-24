@@ -532,3 +532,30 @@ claude mcp add -s user \
 ## 라이선스
 
 MIT
+
+
+## 개인 원격 배포의 LMS 강의자료 → Google Drive 도구
+
+ChatGPT 대화앱에서는 `kupid_lms_sync_to_drive`를 호출한다. 예: `file_ids=[6242752]`,
+`drive_folder_id=<과목 Drive 폴더 ID>`. 게시판 첨부의 실제 파일 ID를 확인하며
+신규 파일명에는 자료 종류 prefix를 붙이고 기존 Drive 파일명은 보존한다.
+`6169202`는 6번 자료이고 7번 자료의 ID는 `6242752`다.
+
+- 환경 설정: `KU_DRIVE_CREDENTIALS_FILE`은 읽기 전용 Google OAuth 인증 JSON,
+  `KU_DRIVE_FOLDER_IDS`는 쉼표로 구분한 기존 과목 폴더 ID 허용 목록이다.
+- 배포 값(`MCP_OWNER_IPS`, `MCP_TRUSTED_PROXY_IPS`, `KU_DRIVE_FOLDER_IDS`, `KU_DRIVE_COURSE_FOLDERS`,
+  `KU_DRIVE_CREDENTIALS_HOST_FILE`)은 `compose.yaml` 옆 `.env`에 둔다. `.env`는 커밋하지 않고 이미지에도 넣지 않는다.
+- 원격 전송에는 별도로 승인한 `ku:drive`가 필요하다. 기존 `ku:read` 토큰은
+  계속 조회에 사용되며, 전송 권한을 얻으려면 ChatGPT의 KU Portal 연결을 새로 검색하고 재승인한다.
+- 서버에서 PDF·ipynb·Office·텍스트·코드·압축파일 등 LMS 원본을 다운로드하고 Drive API resumable upload로 직접 전송한다.
+  같은 파일은 바이트 재전송을 건너뛰며, LMS ID 연결 메타데이터만 보완할 수 있다.
+  수정본은 기존 Drive ID와 현재 Drive 파일명을 유지한다. 이름 필드는 기존 파일의 PATCH에 포함하지 않는다.
+  신규 파일은 `drive_sync_policy`의 분류를 적용한다. 결과의 `filename`은 Drive 파일명,
+  `source_filename`은 LMS 원본명이다. 완료 후 Drive 원본을 다시 읽어 크기·SHA-256을 확인한다.
+  과목 폴더는 `[2026-2] 텍스트마이닝 (BDC102)` 형식의 기존 폴더 연결을 사용하고,
+  자료를 그 폴더에 직접 배치하므로 20개 이하에서도 하위 폴더를 만들지 않는다.
+- 한 번에 1~20개, 파일당 최대 20MiB의 원본 파일을 처리한다. 개별 실패는 결과에 남기고 다음 파일을 계속 처리한다.
+  새 폴더·공유를 만들지 않는다. 기존 다운로드 도구의 embedded resource 전달은 그대로 유지한다.
+- 테스트: `pytest tests`. 실제 ChatGPT의 도구 검색/권한 갱신은 서버 테스트와 별도로 확인해야 한다.
+
+- `drive_folder_id`를 생략하면 `KU_DRIVE_COURSE_FOLDERS`의 과목 ID → 기존 Drive 폴더 연결을 사용한다. Canvas 과목별 파일 조회로 소속을 검증하며 추정만으로 폴더를 선택하지 않는다. 예: `file_ids=[6258929]`. 실패는 `error_code`, `error_message`, `stage`를 텍스트와 구조화 결과에 모두 반환한다.

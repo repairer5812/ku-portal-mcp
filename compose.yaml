@@ -1,3 +1,4 @@
+# 배포 값(IP, Drive 폴더 ID, 자격증명 파일 위치)은 같은 폴더의 .env에서 읽는다. .env는 커밋하지 않는다.
 services:
   ku-portal-mcp:
     build:
@@ -10,15 +11,19 @@ services:
       - "127.0.0.1:8000:8000"
     environment:
       MCP_HOST: "0.0.0.0"
+      KU_DRIVE_CREDENTIALS_FILE: "/run/secrets/ku_drive_credentials"
+      KU_DRIVE_FOLDER_IDS: "${KU_DRIVE_FOLDER_IDS:-}"
+      KU_DRIVE_COURSE_FOLDERS: '${KU_DRIVE_COURSE_FOLDERS:-}'
       MCP_PORT: "8000"
       MCP_PUBLIC_BASE_URL: "https://kcai-b650m-d3hp.tail7ec92f.ts.net/ku-mcp"
-      MCP_OWNER_IPS: "1.225.70.114,100.71.44.60,100.124.100.20,fd7a:115c:a1e0::673b:2c3c,fd7a:115c:a1e0::d03b:6414"
-      MCP_TRUSTED_PROXY_IPS: "172.20.0.1/32"
+      MCP_OWNER_IPS: "${MCP_OWNER_IPS:?MCP_OWNER_IPS를 .env에 넣는다}"
+      MCP_TRUSTED_PROXY_IPS: "${MCP_TRUSTED_PROXY_IPS:?MCP_TRUSTED_PROXY_IPS를 .env에 넣는다}"
       MCP_CLIENT_IP_HEADER: "x-forwarded-for"
       MCP_REGISTRATION_OPEN_UNTIL: "0"
     volumes:
       - /home/kcai/.cache/ku-portal-mcp:/home/app/.cache/ku-portal-mcp
     secrets:
+      - ku_drive_credentials
       - ku_portal_id
       - ku_portal_pw
       - mcp_owner_approval_secret
@@ -53,3 +58,6 @@ secrets:
     file: /home/kcai/.config/ku-portal-mcp/mcp_owner_approval_secret
   mcp_oauth_fernet_key:
     file: /home/kcai/.config/ku-portal-mcp/mcp_oauth_fernet_key
+
+  ku_drive_credentials:
+    file: "${KU_DRIVE_CREDENTIALS_HOST_FILE:?KU_DRIVE_CREDENTIALS_HOST_FILE를 .env에 넣는다}"

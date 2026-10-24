@@ -26,7 +26,7 @@ def remote_module(tmp_path_factory):
     monkeypatch.setenv(
         "MCP_PUBLIC_BASE_URL", "https://mcp.example.test/ku-mcp"
     )
-    monkeypatch.setenv("MCP_OWNER_IPS", "100.71.44.60")
+    monkeypatch.setenv("MCP_OWNER_IPS", "100.64.0.10")
     monkeypatch.setenv("MCP_TRUSTED_PROXY_IPS", "172.20.0.1/32")
     monkeypatch.setenv("MCP_CLIENT_IP_HEADER", "x-forwarded-for")
     monkeypatch.setenv("MCP_OAUTH_DB", str(oauth_db))
@@ -90,17 +90,17 @@ def _insert_pending(module, request_token, *, expires_at=None):
 
 def test_forwarded_ip_is_used_only_for_trusted_proxy(remote_module):
     spoofed = _request(
-        "203.0.113.50", {"x-forwarded-for": "100.71.44.60"}
+        "203.0.113.50", {"x-forwarded-for": "100.64.0.10"}
     )
     proxied = _request(
-        "172.20.0.1", {"x-forwarded-for": "100.71.44.60, 172.20.0.1"}
+        "172.20.0.1", {"x-forwarded-for": "100.64.0.10, 172.20.0.1"}
     )
     appended_spoof = _request(
-        "172.20.0.1", {"x-forwarded-for": "100.71.44.60, 203.0.113.50"}
+        "172.20.0.1", {"x-forwarded-for": "100.64.0.10, 203.0.113.50"}
     )
 
     assert remote_module._request_ip(spoofed) == "203.0.113.50"
-    assert remote_module._request_ip(proxied) == "100.71.44.60"
+    assert remote_module._request_ip(proxied) == "100.64.0.10"
     assert remote_module._request_ip(appended_spoof) == "203.0.113.50"
 
 
@@ -270,3 +270,111 @@ def test_refresh_token_is_single_use(remote_module):
             remote_module.provider.exchange_refresh_token(client, refresh, [])
         )
     assert exc_info.value.error == "invalid_grant"
+
+
+def test_new_scope_is_advertised_without_changing_existing_grants(remote_module):
+    client = OAuthClientInformationFull(
+        client_id="drive-scope-test", redirect_uris=["https://chatgpt.com/connector_platform_oauth_redirect"],
+        scope="ku:read",
+    )
+    remote_module.provider.db.execute(
+        "INSERT OR REPLACE INTO clients(client_id,payload,created_at,last_used_at) VALUES (?,?,?,?)",
+        (client.client_id, remote_module.provider._encrypt_client_payload(client.model_dump_json()), int(time.time()), int(time.time())),
+    )
+    remote_module.provider.db.commit()
+    loaded = asyncio.run(remote_module.provider.get_client(client.client_id))
+    assert set(loaded.scope.split()) == {"ku:read", "ku:drive"}
+    stored = remote_module.provider.db.execute("SELECT payload FROM clients WHERE client_id=?", (client.client_id,)).fetchone()[0]
+    assert json.loads(remote_module.provider._decrypt_client_payload(stored))["scope"] == "ku:read"
+
+
+def test_consent_shows_drive_write_permission_only_when_requested(remote_module):
+    for scopes in (["ku:read"], ["ku:read", "ku:drive"]):
+        token = "consent-scope-" + str(len(scopes))
+        _insert_pending(remote_module, token)
+        row = remote_module.provider.db.execute("SELECT payload FROM pending WHERE token_hash=?", (remote_module._digest(token),)).fetchone()
+        payload = json.loads(row[0])
+        payload["scopes"] = scopes
+        remote_module.provider.db.execute("UPDATE pending SET payload=? WHERE token_hash=?", (json.dumps(payload), remote_module._digest(token)))
+        remote_module.provider.db.commit()
+        request = _request("100.64.0.10")
+        request.scope["query_string"] = ("request=" + token).encode()
+        response = asyncio.run(remote_module.consent(request))
+        body = response.body.decode()
+        assert response.status_code == 200
+        # no-referrer turns Origin into null on native HTML form POSTs.
+        assert response.headers["Referrer-Policy"] == "same-origin"
+        assert response.headers["Cache-Control"] == "no-store"
+        policy = response.headers["Content-Security-Policy"]
+        assert "form-action 'self' https://chatgpt.com/connector_platform_oauth_redirect" in policy
+        assert "https://chatgpt.com/connector/oauth/" in policy
+        assert "*" not in policy
+        assert ("Drive 폴더" in body) == ("ku:drive" in scopes)
+        assert ("쓰기 기능은 제공하지 않습니다" in body) == ("ku:drive" not in scopes)
+
+
+def test_resource_metadata_advertises_optional_drive_scope(remote_module):
+    from starlette.applications import Starlette
+    from starlette.routing import Route
+    from starlette.responses import JSONResponse
+    from starlette.testclient import TestClient
+    path = "/.well-known/oauth-protected-resource/ku-mcp/mcp"
+    async def old_metadata(request):
+        return JSONResponse({"scopes_supported": ["ku:read"]})
+    app = Starlette(routes=[Route(path, old_metadata)])
+    remote_module._advertise_optional_drive_scope(app)
+    with TestClient(app) as client:
+        response = client.get(path)
+    assert response.status_code == 200
+    assert response.json()["scopes_supported"] == ["ku:read", "ku:drive"]
+
+
+@pytest.mark.parametrize("origin", ["null", "https://evil.example"])
+def test_opaque_or_foreign_origin_cannot_use_legitimate_referer(remote_module, origin):
+    request = _request("100.64.0.10", {
+        "origin": origin,
+        "referer": "https://mcp.example.test/ku-mcp/consent",
+    })
+    assert remote_module._has_valid_consent_origin(request) is False
+
+
+def test_same_origin_native_form_approval_keeps_csrf_and_secret_checks(remote_module):
+    from http.cookies import SimpleCookie
+    from urllib.parse import urlencode
+
+    token = "native-form-header-regression"
+    _insert_pending(remote_module, token)
+    get_request = _request("100.64.0.10")
+    get_request.scope["query_string"] = ("request=" + token).encode()
+    page = asyncio.run(remote_module.consent(get_request))
+    assert page.headers["Referrer-Policy"] == "same-origin"
+    cookies = SimpleCookie(page.headers["Set-Cookie"])
+    csrf = cookies[remote_module.CSRF_COOKIE_NAME].value
+    body = urlencode({
+        "request": token,
+        "csrf_token": csrf,
+        "owner_secret": "test-owner-secret-1234567890abcdef",
+    }).encode()
+    request = _request("100.64.0.10", {
+        "origin": "https://mcp.example.test",
+        "cookie": f"{remote_module.CSRF_COOKIE_NAME}={csrf}",
+        "content-type": "application/x-www-form-urlencoded",
+    })
+    request.scope["method"] = "POST"
+    async def receive():
+        return {"type": "http.request", "body": body, "more_body": False}
+    response = asyncio.run(remote_module.consent(Request(request.scope, receive)))
+    # 303 explicitly returns to ChatGPT as GET, without forwarding the secret.
+    assert response.status_code == 303
+    assert response.headers["Location"].startswith(
+        "https://chatgpt.com/connector_platform_oauth_redirect?"
+    )
+    assert response.headers["Referrer-Policy"] == "no-referrer"
+
+
+def test_chatgpt_form_redirect_is_not_allowed_on_other_responses(remote_module):
+    from starlette.responses import PlainTextResponse
+    response = remote_module._secure_response(PlainTextResponse("error", status_code=403))
+    assert "form-action 'self';" in response.headers["Content-Security-Policy"]
+    assert "chatgpt.com" not in response.headers["Content-Security-Policy"]
+    assert response.headers["Referrer-Policy"] == "no-referrer"
