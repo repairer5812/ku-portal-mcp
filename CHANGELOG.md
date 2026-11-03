@@ -31,7 +31,13 @@
 > 업그레이드 방법은 [README의 "업데이트"](README.md#업데이트)를 참고하세요.
 > **uvx 사용자는 캐시 때문에 재시작만으로는 갱신되지 않습니다** (`uv cache clean ku-portal-mcp` 필요).
 
-## [Unreleased]
+## [0.20.0] - 2026-11-03
+
+### 변경
+- `kupid_syllabus`의 대학원 코드(`faclyGschDeptCd`)는 `KU_GRAD_DEPT`가
+  없으면 SW·AI융합대학원 `7298`을 쓴다. 환경변수나 `grad_dept` 인자가 있으면
+  그 값을 쓴다. 과목의 학과 코드(`estblDeprtCd`)는 첫 조회 응답으로 보정되므로
+  7298로 AAI·BDC 과목이 함께 조회된다.
 
 ### 수정
 - `ku_portal_mcp.__version__`과 `ku-portal-mcp --version`이 배포 메타데이터

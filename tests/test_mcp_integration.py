@@ -336,7 +336,7 @@ def _syllabus_payload(evaluation=None, weekly=None, references=None):
 
 def test_kupid_syllabus_returns_evaluation_and_weekly(monkeypatch):
     async def fake_fetch_syllabus(course_code, year, term, section="00", grad_dept=""):
-        assert (course_code, year, term) == ("BDC108", "2026", "2R")
+        assert (course_code, year, term, grad_dept) == ("BDC108", "2026", "2R", "7309")
         return _syllabus_payload(
             evaluation=[
                 {"evlItemCtnt": "수시과제", "evlSco": 30, "seqno": 1},
@@ -357,7 +357,13 @@ def test_kupid_syllabus_returns_evaluation_and_weekly(monkeypatch):
 
     structured = _assert_text_block_matches_structured_output(
         _call_tool(
-            "kupid_syllabus", {"course_code": "bdc108", "year": "2026", "semester": "2"}
+            "kupid_syllabus",
+            {
+                "course_code": "bdc108",
+                "year": "2026",
+                "semester": "2",
+                "grad_dept": "7309",
+            },
         )
     )
 
@@ -377,12 +383,13 @@ def test_kupid_syllabus_notes_unwritten_evaluation(monkeypatch):
     """계획서가 아직 비어 있어도 조회 자체는 성공해야 한다."""
 
     async def fake_fetch_syllabus(course_code, year, term, section="00", grad_dept=""):
+        assert grad_dept == "7313"
         return _syllabus_payload()
 
     monkeypatch.setattr(server_module.ams, "fetch_syllabus", fake_fetch_syllabus)
 
     structured = _assert_text_block_matches_structured_output(
-        _call_tool("kupid_syllabus", {"course_code": "AAI104"})
+        _call_tool("kupid_syllabus", {"course_code": "AAI104", "grad_dept": "7313"})
     )
 
     assert structured["success"] is True
@@ -393,16 +400,68 @@ def test_kupid_syllabus_notes_unwritten_evaluation(monkeypatch):
 
 def test_kupid_syllabus_reports_missing_course(monkeypatch):
     async def fake_fetch_syllabus(course_code, year, term, section="00", grad_dept=""):
+        assert grad_dept == "7313"
         return None
 
     monkeypatch.setattr(server_module.ams, "fetch_syllabus", fake_fetch_syllabus)
 
     structured = _assert_text_block_matches_structured_output(
-        _call_tool("kupid_syllabus", {"course_code": "AAI999"})
+        _call_tool("kupid_syllabus", {"course_code": "AAI999", "grad_dept": "7313"})
     )
 
     assert structured["success"] is False
     assert "찾을 수 없습니다" in structured["message"]
+
+
+def test_kupid_syllabus_uses_7298_when_grad_dept_is_unset(monkeypatch):
+    """대학원 코드를 생략하면 SW·AI융합대학원 7298로 조회한다."""
+
+    async def fake_fetch_syllabus(course_code, year, term, section="00", grad_dept=""):
+        assert grad_dept == "7298"
+        return None
+
+    monkeypatch.setattr(server_module.ams, "fetch_syllabus", fake_fetch_syllabus)
+    monkeypatch.delenv("KU_GRAD_DEPT", raising=False)
+
+    structured = _assert_text_block_matches_structured_output(
+        _call_tool("kupid_syllabus", {"course_code": "AAI110"})
+    )
+
+    assert structured["success"] is False
+    assert "찾을 수 없습니다" in structured["message"]
+
+
+def test_kupid_syllabus_uses_ku_grad_dept_when_argument_is_omitted(monkeypatch):
+    async def fake_fetch_syllabus(course_code, year, term, section="00", grad_dept=""):
+        assert grad_dept == "7001"
+        return None
+
+    monkeypatch.setenv("KU_GRAD_DEPT", "7001")
+    monkeypatch.setattr(server_module.ams, "fetch_syllabus", fake_fetch_syllabus)
+
+    structured = _assert_text_block_matches_structured_output(
+        _call_tool("kupid_syllabus", {"course_code": "AAI110"})
+    )
+
+    assert structured["success"] is False
+    assert "찾을 수 없습니다" in structured["message"]
+
+
+def test_kupid_syllabus_argument_overrides_ku_grad_dept(monkeypatch):
+    async def fake_fetch_syllabus(course_code, year, term, section="00", grad_dept=""):
+        assert grad_dept == "7309"
+        return None
+
+    monkeypatch.setenv("KU_GRAD_DEPT", "7298")
+    monkeypatch.setattr(server_module.ams, "fetch_syllabus", fake_fetch_syllabus)
+
+    structured = _assert_text_block_matches_structured_output(
+        _call_tool(
+            "kupid_syllabus", {"course_code": "BDC108", "grad_dept": "7309"}
+        )
+    )
+
+    assert structured["success"] is False
 
 
 def test_resolve_syllabus_term_maps_break_periods_to_regular_terms():

@@ -769,12 +769,15 @@ async def kupid_syllabus(
         year: 학년도 (기본: 현재 학년도)
         semester: 학기 "1" 또는 "2" (기본: 현재 또는 다가오는 정규학기)
         section: 분반 (기본 "00")
-        grad_dept: 대학원 코드 (기본: SW·AI융합대학원 7298)
+        grad_dept: 대학원 코드(faclyGschDeptCd). 생략 시 KU_GRAD_DEPT,
+            그것도 없으면 SW·AI융합대학원 7298. 학과 코드는 조회 결과로 보정됩니다.
     """
     try:
         code = course_code.strip().upper()
         if not code:
             return {"success": False, "message": "학수번호(course_code)는 필수입니다."}
+
+        resolved_dept = ams.configured_grad_dept(grad_dept)
 
         syy, term = _resolve_syllabus_term(year, semester)
         result = await ams.fetch_syllabus(
@@ -782,7 +785,7 @@ async def kupid_syllabus(
             syy,
             term,
             section=section or "00",
-            grad_dept=grad_dept or ams.GSCIT_GRAD_DEPT,
+            grad_dept=resolved_dept,
         )
 
         if result is None:
@@ -1940,6 +1943,7 @@ def main():
         print("\nEnvironment variables:")
         print("  KU_PORTAL_ID    KUPID portal ID")
         print("  KU_PORTAL_PW    KUPID portal password")
+        print("  KU_GRAD_DEPT    Syllabus graduate-school code (default 7298)")
         return
 
     try:
