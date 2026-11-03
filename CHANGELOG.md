@@ -34,6 +34,8 @@
 ## [0.20.0] - 2026-11-03
 
 ### 변경
+- 도구 32개의 본문을 `ku_portal_mcp/tools/`의 KUPID·AMS·학과·Canvas 모듈로
+  옮겼다. 이름, 인자, 동작은 같고 `server.py`는 세션과 진입점만 남긴다.
 - `kupid_syllabus`의 대학원 코드(`faclyGschDeptCd`)는 `KU_GRAD_DEPT`가
   없으면 SW·AI융합대학원 `7298`을 쓴다. 환경변수나 `grad_dept` 인자가 있으면
   그 값을 쓴다. 과목의 학과 코드(`estblDeprtCd`)는 첫 조회 응답으로 보정되므로
