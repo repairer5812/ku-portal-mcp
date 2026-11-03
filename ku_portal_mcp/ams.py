@@ -118,8 +118,13 @@ API_SYLLABUS_PLAN = AmsApi(
     "dsSles366",
 )
 
-# SW·AI융합대학원. 대학원 코드는 소속 대학원마다 다르다.
-GSCIT_GRAD_DEPT = "7298"
+def configured_grad_dept(explicit: str = "") -> str:
+    """강의계획서 대학원 코드. 인자가 있으면 그것을, 없으면 ``KU_GRAD_DEPT``를 쓴다.
+
+    둘 다 비어 있으면 빈 문자열이다. 특정 대학원 코드를 기본값으로 넣지 않는다.
+    학과 코드가 틀리면 API가 오류 대신 빈 목록을 돌려 "미개설"로 오인된다.
+    """
+    return (explicit or "").strip() or os.environ.get("KU_GRAD_DEPT", "").strip()
 
 
 @dataclass
@@ -498,9 +503,14 @@ async def fetch_syllabus(
     year: str,
     term: str,
     section: str = "00",
-    grad_dept: str = GSCIT_GRAD_DEPT,
+    *,
+    grad_dept: str,
 ) -> dict | None:
     """강의계획서를 조회한다. 로그인이 필요 없다.
+
+    ``grad_dept``는 필수다. 비어 있으면 네트워크를 호출하지 않고 ``ValueError``를
+    낸다. 호출 전에 :func:`configured_grad_dept`로 인자 또는 ``KU_GRAD_DEPT``를
+    확정한다.
 
     두 번 호출하는 이유가 있다. 평가항목과 주차별 계획은 기본정보와 다른
     API에 있고, 그 API는 개설학과 코드(``estblDeprtCd``)가 정확해야 내용을
@@ -510,6 +520,13 @@ async def fetch_syllabus(
     과목이 개설되지 않았으면 ``None``, 개설됐지만 교수가 아직 계획서를
     작성하지 않았으면 ``evaluation``/``weekly``가 빈 목록이 된다.
     """
+    grad_dept = (grad_dept or "").strip()
+    if not grad_dept:
+        raise ValueError(
+            "대학원 코드(grad_dept)는 필수입니다. "
+            "KU_GRAD_DEPT 환경변수 또는 인자로 지정하세요."
+        )
+
     cond = {
         "syy": year,
         "smtDivcd": term,

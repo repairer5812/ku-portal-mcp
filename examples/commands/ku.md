@@ -1,7 +1,7 @@
 ---
 description: "고려대 포털(KUPID) 통합 조회 — 도서관/공지/LMS/시간표/장학"
 argument-hint: "[도서관|공지|과제|성적|시간표|장학|검색] [상세 키워드]"
-allowed-tools: mcp__ku-portal__kupid_login, mcp__ku-portal__kupid_get_library_seats, mcp__ku-portal__kupid_get_notices, mcp__ku-portal__kupid_get_notice_detail, mcp__ku-portal__kupid_dept_notices, mcp__ku-portal__kupid_dept_notice_detail, mcp__ku-portal__kupid_get_schedules, mcp__ku-portal__kupid_get_schedule_detail, mcp__ku-portal__kupid_get_scholarships, mcp__ku-portal__kupid_get_scholarship_detail, mcp__ku-portal__kupid_get_syllabus, mcp__ku-portal__kupid_get_timetable, mcp__ku-portal__kupid_my_courses, mcp__ku-portal__kupid_get_all_grades, mcp__ku-portal__kupid_lms_assignments, mcp__ku-portal__kupid_lms_courses, mcp__ku-portal__kupid_lms_dashboard, mcp__ku-portal__kupid_lms_grades, mcp__ku-portal__kupid_lms_modules, mcp__ku-portal__kupid_lms_quizzes, mcp__ku-portal__kupid_lms_submissions, mcp__ku-portal__kupid_lms_todo, mcp__ku-portal__kupid_search, mcp__ku-portal__kupid_search_courses
+allowed-tools: mcp__ku-portal__kupid_login, mcp__ku-portal__kupid_get_library_seats, mcp__ku-portal__kupid_get_notices, mcp__ku-portal__kupid_get_notice_detail, mcp__ku-portal__kupid_dept_notices, mcp__ku-portal__kupid_dept_notice_detail, mcp__ku-portal__kupid_get_schedules, mcp__ku-portal__kupid_get_scholarships, mcp__ku-portal__kupid_get_scholarship_detail, mcp__ku-portal__kupid_syllabus, mcp__ku-portal__kupid_get_timetable, mcp__ku-portal__kupid_my_courses, mcp__ku-portal__kupid_get_all_grades, mcp__ku-portal__kupid_lms_assignments, mcp__ku-portal__kupid_lms_courses, mcp__ku-portal__kupid_lms_dashboard, mcp__ku-portal__kupid_lms_grades, mcp__ku-portal__kupid_lms_modules, mcp__ku-portal__kupid_lms_quizzes, mcp__ku-portal__kupid_lms_submissions, mcp__ku-portal__kupid_lms_todo, mcp__ku-portal__kupid_search, mcp__ku-portal__kupid_search_courses
 ---
 
 # 고려대 포털 (KUPID)
@@ -55,11 +55,10 @@ allowed-tools: mcp__ku-portal__kupid_login, mcp__ku-portal__kupid_get_library_se
 - kupid_get_schedules로 학사 일정 조회
 
 ### "강의계획서" + 과목코드
-- kupid_get_syllabus로 강의계획서 조회
-- 학수번호(예: COSE101, AAI110)와 분반을 지정
-- 개설과목 목록에서 교수, 학점, 강의시간 등 기본 정보를 자동으로 추출
-- 대학원 과목(AAI 등)도 지원
-- 예: `/ku 강의계획서 AAI110`, `/ku COSE101 02분반 강의계획서`
+- kupid_syllabus로 강의계획서 조회
+- 학수번호(예: COSE101, AAI110)와 분반, 그리고 grad_dept(대학원·단과대 코드)를 지정
+- grad_dept가 없으면 KU_GRAD_DEPT를 쓰고, 그것도 없으면 코드를 물어본 뒤 조회한다. 코드를 추측하지 않는다
+- 예: `/ku 강의계획서 AAI110 grad_dept 7313`
 
 ### "검색" + 키워드
 - kupid_search로 포털 통합 검색
