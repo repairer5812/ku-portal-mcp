@@ -337,26 +337,9 @@ async def fetch_post_detail(client: httpx.AsyncClient, url: str) -> PostDetail:
     return parse_post_detail(resp.text, url)
 
 
-async def fetch_academic_schedule(
-    year: int | str, semester: int | str
-) -> tuple[list[ScheduleEntry], str]:
-    """학사일정을 조회한다. (일정 리스트, 표 제목)을 반환.
-
-    Args:
-        year: 학년도 (예: 2026)
-        semester: 학기 (1 또는 2)
-    """
-    params = {"cYear": str(year), "hakGi": str(semester)}
-
-    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
-        resp = await client.get(
-            SCHEDULE_URL,
-            params=params,
-            headers={"user-agent": _HEADERS["user-agent"]},
-        )
-        resp.raise_for_status()
-
-    soup = BeautifulSoup(resp.text, "lxml")
+def parse_academic_schedule(html: str) -> tuple[list[ScheduleEntry], str]:
+    """학사일정 HTML 표를 (일정 리스트, 표 제목)으로 변환한다."""
+    soup = BeautifulSoup(html, "lxml")
     table = soup.find("table")
     if not table:
         raise RuntimeError("학사일정 표를 찾을 수 없습니다")
@@ -388,3 +371,25 @@ async def fetch_academic_schedule(
         entries.append(ScheduleEntry(month=current_month, date=date, event=event))
 
     return entries, caption
+
+
+async def fetch_academic_schedule(
+    year: int | str, semester: int | str
+) -> tuple[list[ScheduleEntry], str]:
+    """학사일정을 조회한다. (일정 리스트, 표 제목)을 반환.
+
+    Args:
+        year: 학년도 (예: 2026)
+        semester: 학기 (1 또는 2)
+    """
+    params = {"cYear": str(year), "hakGi": str(semester)}
+
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+        resp = await client.get(
+            SCHEDULE_URL,
+            params=params,
+            headers={"user-agent": _HEADERS["user-agent"]},
+        )
+        resp.raise_for_status()
+
+    return parse_academic_schedule(resp.text)

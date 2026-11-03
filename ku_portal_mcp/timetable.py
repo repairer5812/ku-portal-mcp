@@ -1,26 +1,15 @@
-"""Personal timetable retrieval from KUPID portal.
+"""교시 시각 변환과 ICS 내보내기.
 
-Fetches the timetable widget from the portal main page via
-POST /front/EkuSchedule.kpd AJAX endpoint.
-Requires SSO login.
+시간표 데이터는 AMS 격자를 편다. 레거시 포털 위젯
+(``POST /front/EkuSchedule.kpd``)은 ``*.kpd`` 폐지 이후 호출할 수 없고,
+당시 ``Session``에도 ``ssotoken`` 필드가 없어 남겨 두면 ``AttributeError``만
+난다. 그 클라이언트는 제거했다.
 """
 
-import asyncio
 import re
-import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-import httpx
-from bs4 import BeautifulSoup
-
-from .auth import Session, PORTAL_BASE, _BROWSER_HEADERS
-
-logger = logging.getLogger(__name__)
-
-TIMETABLE_URL = f"{PORTAL_BASE}/front/EkuSchedule.kpd"
-
-DAY_NAMES = {0: "일", 1: "월", 2: "화", 3: "수", 4: "목", 5: "금", 6: "토"}
 
 # Standard period-to-time mapping for Korea University
 PERIOD_TIMES = {
@@ -48,79 +37,6 @@ class TimetableEntry:
     end_time: str
 
 
-async def fetch_timetable_day(session: Session, day: int) -> list[TimetableEntry]:
-    """Fetch timetable entries for a specific day of the week.
-
-    Args:
-        session: Valid KUPID session.
-        day: Day of week (0=Sun, 1=Mon, ..., 6=Sat).
-
-    Returns:
-        List of timetable entries for that day.
-    """
-    cookie = (
-        f"ssotoken={session.ssotoken}; PORTAL_SESSIONID={session.portal_session_id};"
-    )
-
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(
-            TIMETABLE_URL,
-            data={"week": str(day)},
-            headers={
-                **_BROWSER_HEADERS,
-                "cookie": cookie,
-                "referer": f"{PORTAL_BASE}/front/Main.kpd",
-                "content-type": "application/x-www-form-urlencoded",
-                "x-requested-with": "XMLHttpRequest",
-            },
-        )
-        resp.raise_for_status()
-
-    html = resp.text
-    return _parse_timetable_html(html, day)
-
-
-def _parse_timetable_html(html: str, day: int) -> list[TimetableEntry]:
-    """Parse timetable HTML response into structured entries."""
-    soup = BeautifulSoup(html, "lxml")
-    entries = []
-
-    day_name = DAY_NAMES.get(day, str(day))
-
-    tbody = soup.find("tbody")
-    if not tbody:
-        return entries
-
-    for row in tbody.find_all("tr"):
-        tds = row.find_all("td")
-        if len(tds) < 3:
-            # "강의가 없습니다" row has colspan=3
-            continue
-
-        period = tds[0].get_text(strip=True)
-        subject = tds[1].get_text(strip=True)
-        classroom = tds[2].get_text(strip=True)
-
-        if not subject or subject == "강의가 없습니다":
-            continue
-
-        # Resolve start/end times from period
-        start_time, end_time = resolve_period_time(period)
-
-        entries.append(
-            TimetableEntry(
-                day_of_week=day_name,
-                period=period,
-                subject_name=subject,
-                classroom=classroom,
-                start_time=start_time,
-                end_time=end_time,
-            )
-        )
-
-    return entries
-
-
 def resolve_period_time(period: str) -> tuple[str, str]:
     """Convert period string (e.g., '1', '2-3') to start/end times."""
     parts = re.split(r"[-~]", period.strip())
@@ -131,17 +47,6 @@ def resolve_period_time(period: str) -> tuple[str, str]:
     end_time = PERIOD_TIMES.get(end_period, ("", ""))[1]
 
     return start_time or period, end_time or period
-
-
-async def fetch_full_timetable(session: Session) -> list[TimetableEntry]:
-    """Fetch the full weekly timetable (Mon-Fri) in parallel."""
-    results = await asyncio.gather(
-        *(fetch_timetable_day(session, day) for day in range(1, 6))
-    )
-    all_entries = []
-    for entries in results:
-        all_entries.extend(entries)
-    return all_entries
 
 
 def timetable_to_ics(entries: list[TimetableEntry], semester_start: str = "") -> str:

@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<body>
+<script>
+document.getElementById("relay").submit();
+</script>
+<form id="login" action="/Login.eps">
+  <input type="text" name="user_id" value="">
+  <input type="password" name="user_password" value="">
+  <input type="hidden" name="l_token" value="abc">
+</form>
+<form id="relay" action="/sso/relay">
+  <input type="hidden" name="SAMLResponse" value="abc">
+  <input type="hidden" name="RelayState" value="xyz">
+</form>
+</body>
+</html>

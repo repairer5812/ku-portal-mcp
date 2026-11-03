@@ -47,24 +47,9 @@ class DeptNoticeDetail:
     url: str
 
 
-async def fetch_dept_notice_list(
-    base_url: str, offset: int = 0, limit: int = 20
-) -> list[DeptNotice]:
-    """Fetch notice list from a department board page.
-
-    Args:
-        base_url: Full URL of the department notice board
-                  (e.g., https://gscit.korea.ac.kr/gscit/board/notice_master.do)
-        offset: Pagination offset (article.offset parameter)
-        limit: Maximum items to return
-    """
-    params = {"article.offset": str(offset)}
-
-    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
-        resp = await client.get(base_url, params=params, headers=_HEADERS)
-        resp.raise_for_status()
-
-    soup = BeautifulSoup(resp.text, "lxml")
+def parse_dept_notice_list(html: str, limit: int = 20) -> list[DeptNotice]:
+    """학과 게시판 목록 HTML을 항목으로 변환한다. HTTP와 분리된 순수 파서."""
+    soup = BeautifulSoup(html, "lxml")
     items: list[DeptNotice] = []
 
     rows = soup.select("table tbody tr")
@@ -142,20 +127,31 @@ async def fetch_dept_notice_list(
     return items
 
 
-async def fetch_dept_notice_detail(base_url: str, article_no: str) -> DeptNoticeDetail:
-    """Fetch detail page for a specific notice article.
+async def fetch_dept_notice_list(
+    base_url: str, offset: int = 0, limit: int = 20
+) -> list[DeptNotice]:
+    """Fetch notice list from a department board page.
 
     Args:
-        base_url: Board base URL (same as used for list)
-        article_no: Article number from the list
+        base_url: Full URL of the department notice board
+                  (e.g., https://gscit.korea.ac.kr/gscit/board/notice_master.do)
+        offset: Pagination offset (article.offset parameter)
+        limit: Maximum items to return
     """
-    params = {"mode": "view", "articleNo": article_no}
+    params = {"article.offset": str(offset)}
 
     async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
         resp = await client.get(base_url, params=params, headers=_HEADERS)
         resp.raise_for_status()
 
-    soup = BeautifulSoup(resp.text, "lxml")
+    return parse_dept_notice_list(resp.text, limit)
+
+
+def parse_dept_notice_detail(
+    html: str, base_url: str, article_no: str
+) -> DeptNoticeDetail:
+    """학과 게시글 상세 HTML을 변환한다. HTTP와 분리된 순수 파서."""
+    soup = BeautifulSoup(html, "lxml")
 
     # Title extraction
     title = ""
@@ -219,3 +215,19 @@ async def fetch_dept_notice_detail(base_url: str, article_no: str) -> DeptNotice
         attachments=attachments,
         url=view_url,
     )
+
+
+async def fetch_dept_notice_detail(base_url: str, article_no: str) -> DeptNoticeDetail:
+    """Fetch detail page for a specific notice article.
+
+    Args:
+        base_url: Board base URL (same as used for list)
+        article_no: Article number from the list
+    """
+    params = {"mode": "view", "articleNo": article_no}
+
+    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+        resp = await client.get(base_url, params=params, headers=_HEADERS)
+        resp.raise_for_status()
+
+    return parse_dept_notice_detail(resp.text, base_url, article_no)
