@@ -56,9 +56,9 @@ allowed-tools: mcp__ku-portal__kupid_login, mcp__ku-portal__kupid_get_library_se
 
 ### "강의계획서" + 과목코드
 - kupid_syllabus로 강의계획서 조회
-- 학수번호(예: COSE101, AAI110)와 분반, 그리고 grad_dept(대학원·단과대 코드)를 지정
-- grad_dept가 없으면 KU_GRAD_DEPT를 쓰고, 그것도 없으면 코드를 물어본 뒤 조회한다. 코드를 추측하지 않는다
-- 예: `/ku 강의계획서 AAI110 grad_dept 7313`
+- 학수번호(예: COSE101, AAI110)와 분반을 지정
+- grad_dept는 대학원 코드(faclyGschDeptCd)다. 없으면 KU_GRAD_DEPT, 그것도 없으면 7298(SW·AI융합대학원)
+- 예: `/ku 강의계획서 AAI110 grad_dept 7298`
 
 ### "검색" + 키워드
 - kupid_search로 포털 통합 검색

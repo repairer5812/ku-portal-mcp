@@ -118,13 +118,22 @@ API_SYLLABUS_PLAN = AmsApi(
     "dsSles366",
 )
 
-def configured_grad_dept(explicit: str = "") -> str:
-    """강의계획서 대학원 코드. 인자가 있으면 그것을, 없으면 ``KU_GRAD_DEPT``를 쓴다.
+# SW·AI융합대학원. faclyGschDeptCd(대학원 코드)이며 학과 코드가 아니다.
+# 과목의 estblDeprtCd는 첫 조회 응답으로 보정되므로 AAI·BDC도 이 값으로 조회된다.
+_DEFAULT_GRAD_DEPT = "7298"
 
-    둘 다 비어 있으면 빈 문자열이다. 특정 대학원 코드를 기본값으로 넣지 않는다.
-    학과 코드가 틀리면 API가 오류 대신 빈 목록을 돌려 "미개설"로 오인된다.
+
+def configured_grad_dept(explicit: str = "") -> str:
+    """강의계획서 대학원 코드(``faclyGschDeptCd``).
+
+    인자가 있으면 그것을, 없으면 ``KU_GRAD_DEPT``를 쓴다.
+    둘 다 없으면 SW·AI융합대학원 ``7298``이다.
     """
-    return (explicit or "").strip() or os.environ.get("KU_GRAD_DEPT", "").strip()
+    return (
+        (explicit or "").strip()
+        or os.environ.get("KU_GRAD_DEPT", "").strip()
+        or _DEFAULT_GRAD_DEPT
+    )
 
 
 @dataclass
