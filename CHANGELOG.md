@@ -31,6 +31,20 @@
 > 업그레이드 방법은 [README의 "업데이트"](README.md#업데이트)를 참고하세요.
 > **uvx 사용자는 캐시 때문에 재시작만으로는 갱신되지 않습니다** (`uv cache clean ku-portal-mcp` 필요).
 
+## [Unreleased]
+
+### 수정
+- `ku_portal_mcp.__version__`과 `ku-portal-mcp --version`이 배포 메타데이터
+  (`pyproject.toml`의 version)를 읽는다. 패키지는 0.19.0인데 CLI는 0.18.1을
+  출력하고 있었다.
+- 폐지된 포털 위젯 `EkuSchedule.kpd` 시간표 클라이언트를 제거했다.
+  `Session`에 `ssotoken`이 없어 호출하면 `AttributeError`만 났고, 시간표 도구는
+  이미 AMS 격자를 사용한다. 교시→시각 변환과 ICS 내보내기는 그대로다.
+
+### 추가
+- 로그인 페이지, 게시글 본문, 학과 게시판, 학사일정 HTML 픽스처로 파서 단위 테스트를 추가했다.
+- GitHub Actions에서 Python 3.10과 3.12로 pytest를 실행한다.
+
 ## [0.19.0] - 2026-08-12
 
 ### 추가

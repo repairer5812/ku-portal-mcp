@@ -1,8 +1,20 @@
+import ku_portal_mcp.timetable as timetable
+from ku_portal_mcp.auth import Session
 from ku_portal_mcp.timetable import (
     TimetableEntry,
     resolve_period_time,
     timetable_to_ics,
 )
+
+
+def test_legacy_kpd_timetable_client_is_removed():
+    """폐지된 EkuSchedule.kpd 클라이언트는 Session.ssotoken을 읽어 AttributeError가 났다."""
+    assert not hasattr(timetable, "fetch_timetable_day")
+    assert not hasattr(timetable, "fetch_full_timetable")
+    assert not hasattr(timetable, "_parse_timetable_html")
+    session = Session(cookies=[], created_at=0.0)
+    assert not hasattr(session, "ssotoken")
+    assert not hasattr(session, "portal_session_id")
 
 
 def testresolve_period_time_for_range():
