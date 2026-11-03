@@ -413,30 +413,30 @@ def test_kupid_syllabus_reports_missing_course(monkeypatch):
     assert "찾을 수 없습니다" in structured["message"]
 
 
-def test_kupid_syllabus_does_not_query_without_grad_dept(monkeypatch):
-    """대학원 코드를 생략하면 7298로 조회하지 않고, 네트워크도 타지 않는다."""
+def test_kupid_syllabus_uses_7298_when_grad_dept_is_unset(monkeypatch):
+    """대학원 코드를 생략하면 SW·AI융합대학원 7298로 조회한다."""
 
-    async def fake_fetch_syllabus(*args, **kwargs):
-        raise AssertionError(f"fetch_syllabus should not be called: {args} {kwargs}")
+    async def fake_fetch_syllabus(course_code, year, term, section="00", grad_dept=""):
+        assert grad_dept == "7298"
+        return None
 
     monkeypatch.setattr(server_module.ams, "fetch_syllabus", fake_fetch_syllabus)
     monkeypatch.delenv("KU_GRAD_DEPT", raising=False)
 
     structured = _assert_text_block_matches_structured_output(
-        _call_tool("kupid_syllabus", {"course_code": "COSE101"})
+        _call_tool("kupid_syllabus", {"course_code": "AAI110"})
     )
 
     assert structured["success"] is False
-    assert "grad_dept" in structured["message"]
-    assert "7298" not in structured["message"]
+    assert "찾을 수 없습니다" in structured["message"]
 
 
 def test_kupid_syllabus_uses_ku_grad_dept_when_argument_is_omitted(monkeypatch):
     async def fake_fetch_syllabus(course_code, year, term, section="00", grad_dept=""):
-        assert grad_dept == "7313"
+        assert grad_dept == "7001"
         return None
 
-    monkeypatch.setenv("KU_GRAD_DEPT", "7313")
+    monkeypatch.setenv("KU_GRAD_DEPT", "7001")
     monkeypatch.setattr(server_module.ams, "fetch_syllabus", fake_fetch_syllabus)
 
     structured = _assert_text_block_matches_structured_output(

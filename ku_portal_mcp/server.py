@@ -391,7 +391,7 @@ def main():
         print("\nEnvironment variables:")
         print("  KU_PORTAL_ID    KUPID portal ID")
         print("  KU_PORTAL_PW    KUPID portal password")
-        print("  KU_GRAD_DEPT    Syllabus college code (optional; no built-in default)")
+        print("  KU_GRAD_DEPT    Syllabus graduate-school code (default 7298)")
         return
 
     try:
